@@ -1,60 +1,38 @@
 <?php
 namespace app\controller;
 
-use think\facade\Db;
+use app\model\Article;
+use app\model\Comment;
+use app\model\User;
 use think\Request;
 
 class Admin extends ApiBase
 {
-    private function page(Request $request, int $def = 10): array
-    {
-        $page = max(1, (int)$request->get('page', 1));
-        $size = (int)$request->get('size', $def);
-        $size = $size < 1 ? $def : min(50, $size);
-        return [$page, $size, ($page - 1) * $size];
-    }
-
-    // GET api/admin/articles?status=&page=&keyword=
     public function articles(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
         if ($err) return $err;
 
-        [$page, $size, $offset] = $this->page($request);
+        [$page, $size, $offset] = $this->pageParams($request, 10);
+        $status = (string)$request->get('status', '');
+        $kw     = trim((string)$request->get('keyword', ''));
 
-        $q = Db::name('article')->alias('a')->join('user u', 'u.id = a.user_id');
-
-        $status = $request->get('status', '');
-        if ($status !== '' && in_array((int)$status, [0, 1, 2], true)) {
-            $q->where('a.status', (int)$status);
-        }
-        $kw = trim((string)$request->get('keyword', ''));
-        if ($kw !== '') {
-            $q->whereLike('a.title', '%' . $kw . '%');
-        }
-
-        $total = (clone $q)->count();
-
-        $rows = $q->field('a.id,a.title,a.status,a.created_at,u.username')
-            ->order('a.id desc')
-            ->limit($offset, $size)
-            ->select()
-            ->toArray();
+        $total = Article::adminCount($status, $kw);
+        $rows  = Article::adminPage($status, $kw, $offset, $size);
 
         $map = [0 => '待审核', 1 => '已通过', 2 => '已驳回'];
         foreach ($rows as &$r) {
             $r['id']            = (int)$r['id'];
             $r['status']        = (int)$r['status'];
             $r['status_text']   = $map[$r['status']] ?? '未知';
-            $r['like_count']    = (int)Db::name('article_likes')->where('article_id', $r['id'])->count();
-            $r['comment_count'] = (int)Db::name('comment')->where('article_id', $r['id'])->count();
+            $r['like_count']    = Article::likeCount($r['id']);
+            $r['comment_count'] = Article::commentCount($r['id']);
         }
         unset($r);
 
-        return $this->ok(['list' => $rows, 'total' => (int)$total, 'page' => $page, 'size' => $size]);
+        return $this->ok(['list' => $rows, 'total' => $total, 'page' => $page, 'size' => $size]);
     }
 
-    // GET api/admin/article?id=1
     public function article(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
@@ -63,31 +41,17 @@ class Admin extends ApiBase
         $id = (int)$request->get('id', 0);
         if ($id <= 0) return $this->fail('缺少 id');
 
-        $a = Db::name('article')
-            ->alias('a')
-            ->join('user u', 'u.id = a.user_id')
-            ->where('a.id', $id)
-            ->field('a.id,a.title,a.content,a.status,a.created_at,u.username')
-            ->find();
-
+        $a = Article::findAny($id);
         if (!$a) return $this->fail('文章不存在', 404, 404);
 
         $map = [0 => '待审核', 1 => '已通过', 2 => '已驳回'];
         $a['id']            = (int)$a['id'];
         $a['status']        = (int)$a['status'];
         $a['status_text']   = $map[$a['status']] ?? '未知';
-        $a['like_count']    = (int)Db::name('article_likes')->where('article_id', $id)->count();
-        $a['comment_count'] = (int)Db::name('comment')->where('article_id', $id)->count();
+        $a['like_count']    = Article::likeCount($id);
+        $a['comment_count'] = Article::commentCount($id);
 
-        $comments = Db::name('comment')
-            ->alias('c')
-            ->join('user u', 'u.id = c.user_id')
-            ->where('c.article_id', $id)
-            ->field('c.id,c.user_id,c.content,c.created_at,u.username')
-            ->order('c.id desc')
-            ->select()
-            ->toArray();
-
+        $comments = Comment::byArticle($id);
         foreach ($comments as &$c) {
             $c['id']      = (int)$c['id'];
             $c['user_id'] = (int)$c['user_id'];
@@ -97,7 +61,6 @@ class Admin extends ApiBase
         return $this->ok(['article' => $a, 'comments' => $comments]);
     }
 
-    // POST api/admin/article/audit
     public function audit(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
@@ -110,15 +73,13 @@ class Admin extends ApiBase
         if ($id <= 0)                         return $this->fail('缺少 id');
         if (!in_array($status, [1, 2], true)) return $this->fail('status 只能是 1（通过）或 2（驳回）');
 
-        $exists = Db::name('article')->where('id', $id)->find();
-        if (!$exists) return $this->fail('文章不存在', 404, 404);
+        if (!Article::findRow($id)) return $this->fail('文章不存在', 404, 404);
 
-        Db::name('article')->where('id', $id)->update(['status' => $status]);
+        Article::setStatus($id, $status);
 
         return $this->ok(null, $status === 1 ? '审核通过' : '已驳回');
     }
 
-    // POST api/admin/comment/delete
     public function commentDelete(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
@@ -128,42 +89,23 @@ class Admin extends ApiBase
         $id = (int)$request->post('id', 0);
         if ($id <= 0) return $this->fail('缺少 id');
 
-        $row = Db::name('comment')->where('id', $id)->find();
-        if (!$row) return $this->fail('评论不存在', 404, 404);
+        if (!Comment::findRow($id)) return $this->fail('评论不存在', 404, 404);
 
-        Db::name('comment')->where('id', $id)->delete();
+        Comment::remove($id);
 
         return $this->ok(null, '删除成功');
     }
 
-    // GET api/admin/comments
     public function comments(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
         if ($err) return $err;
 
-        [$page, $size, $offset] = $this->page($request, 20);
-
-        $q = Db::name('comment')
-            ->alias('c')
-            ->join('user u', 'u.id = c.user_id')
-            ->join('article a', 'a.id = c.article_id');
-
-        $articleId = (int)$request->get('article_id', 0);
-        if ($articleId > 0) $q->where('c.article_id', $articleId);
-
+        [$page, $size, $offset] = $this->pageParams($request, 20);
         $kw = trim((string)$request->get('keyword', ''));
-        if ($kw !== '') {
-            $q->whereLike('c.content', '%' . $kw . '%');
-        }
 
-        $total = (clone $q)->count();
-
-        $rows = $q->field('c.id,c.article_id,c.user_id,c.content,c.created_at,u.username,a.title as article_title')
-            ->order('c.id desc')
-            ->limit($offset, $size)
-            ->select()
-            ->toArray();
+        $total = Comment::adminCount($kw);
+        $rows  = Comment::adminPage($kw, $offset, $size);
 
         foreach ($rows as &$r) {
             $r['id']         = (int)$r['id'];
@@ -172,28 +114,19 @@ class Admin extends ApiBase
         }
         unset($r);
 
-        return $this->ok(['list' => $rows, 'total' => (int)$total, 'page' => $page, 'size' => $size]);
+        return $this->ok(['list' => $rows, 'total' => $total, 'page' => $page, 'size' => $size]);
     }
 
-    // GET api/admin/users
     public function users(Request $request)
     {
         [$admin, $err] = $this->mustAdmin();
         if ($err) return $err;
 
-        [$page, $size, $offset] = $this->page($request, 20);
-
-        $q = Db::name('user');
+        [$page, $size, $offset] = $this->pageParams($request, 20);
         $kw = trim((string)$request->get('keyword', ''));
-        if ($kw !== '') $q->whereLike('username', '%' . $kw . '%');
 
-        $total = (clone $q)->count();
-
-        $rows = $q->field('id,username,role,created_at')
-            ->order('id asc')
-            ->limit($offset, $size)
-            ->select()
-            ->toArray();
+        $total = User::countAll($kw);
+        $rows  = User::page($offset, $size, $kw);
 
         foreach ($rows as &$r) {
             $r['id']        = (int)$r['id'];
@@ -202,6 +135,6 @@ class Admin extends ApiBase
         }
         unset($r);
 
-        return $this->ok(['list' => $rows, 'total' => (int)$total, 'page' => $page, 'size' => $size]);
+        return $this->ok(['list' => $rows, 'total' => $total, 'page' => $page, 'size' => $size]);
     }
 }

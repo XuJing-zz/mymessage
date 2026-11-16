@@ -1,12 +1,11 @@
 <?php
 namespace app\controller;
 
-use think\facade\Db;
+use app\model\User;
 use think\Request;
 
 class Auth extends ApiBase
 {
-    // POST api/register
     public function register(Request $request)
     {
         if ($err = $this->needPost($request)) return $err;
@@ -14,27 +13,19 @@ class Auth extends ApiBase
         $username = trim((string)$request->post('username', ''));
         $password = (string)$request->post('password', '');
 
-        if ($username === '')                       return $this->fail('用户名不能为空');
-        if (mb_strlen($username, 'UTF-8') < 3)      return $this->fail('用户名至少 3 个字符');
-        if (mb_strlen($username, 'UTF-8') > 20)     return $this->fail('用户名最多 20 个字符');
-        if (mb_strlen($password, 'UTF-8') < 6)      return $this->fail('密码至少 6 位');
+        if ($username === '')                   return $this->fail('用户名不能为空');
+        if (mb_strlen($username, 'UTF-8') < 3)  return $this->fail('用户名至少 3 个字符');
+        if (mb_strlen($username, 'UTF-8') > 20) return $this->fail('用户名最多 20 个字符');
+        if (mb_strlen($password, 'UTF-8') < 6)  return $this->fail('密码至少 6 位');
 
-        if (Db::name('user')->where('username', $username)->find()) {
-            return $this->fail('用户名已存在', 1002);
-        }
+        if (User::findByName($username)) return $this->fail('用户名已存在', 1002);
 
-        $id = Db::name('user')->insertGetId([
-            'username' => $username,
-            'password' => password_hash($password, PASSWORD_DEFAULT),
-            'role'     => 0,
-        ]);
+        $id = User::createUser($username, password_hash($password, PASSWORD_DEFAULT));
+        session('user', ['id' => $id, 'username' => $username, 'role' => 0]);
 
-        session('user', ['id' => (int)$id, 'username' => $username, 'role' => 0]);
-
-        return $this->ok(['id' => (int)$id, 'username' => $username, 'role' => 0], '注册成功');
+        return $this->ok(['id' => $id, 'username' => $username, 'role' => 0], '注册成功');
     }
 
-    // POST api/login
     public function login(Request $request)
     {
         if ($err = $this->needPost($request)) return $err;
@@ -42,12 +33,9 @@ class Auth extends ApiBase
         $username = trim((string)$request->post('username', ''));
         $password = (string)$request->post('password', '');
 
-        if ($username === '' || $password === '') {
-            return $this->fail('账号密码不能为空');
-        }
+        if ($username === '' || $password === '') return $this->fail('账号密码不能为空');
 
-        $user = Db::name('user')->where('username', $username)->find();
-
+        $user = User::findByName($username);
         if (!$user || !password_verify($password, $user['password'])) {
             return $this->fail('用户名或密码错误', 1001);
         }
@@ -58,15 +46,12 @@ class Auth extends ApiBase
         return $this->ok($u, '登录成功');
     }
 
-    // POST api/logout
     public function logout()
     {
-        session('user', null);
         session(null);
         return $this->ok(null, '已退出登录');
     }
 
-    // GET api/me
     public function me()
     {
         [$user, $err] = $this->mustLogin();
