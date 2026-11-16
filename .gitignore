@@ -22,3 +22,7 @@ dev.log
 .idea/
 .DS_Store
 Thumbs.db
+# ThinkPHP
+/tp/vendor/
+/tp/runtime/
+/tp/.env
