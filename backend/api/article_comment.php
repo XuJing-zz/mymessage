@@ -28,7 +28,7 @@ if (!$article) fail('文章不存在或未审核', 404, 404);
 
 // 3. 查评论
 $stmt = mysqli_prepare($connect,
-    'select c.id, c.content, c.created_at, u.username
+    'select c.id, c.user_id, c.content, c.created_at, u.username
      from comment c
      join `user` u on u.id = c.user_id
      where c.article_id = ?
@@ -39,7 +39,8 @@ mysqli_stmt_execute($stmt);
 $comments = [];
 $res = mysqli_stmt_get_result($stmt);
 while ($row = mysqli_fetch_assoc($res)) {
-    $row['id'] = (int)$row['id'];
+    $row['id']      = (int)$row['id'];
+    $row['user_id'] = (int)$row['user_id'];
     $comments[] = $row;
 }
 

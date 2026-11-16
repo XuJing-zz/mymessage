@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getArticleDetail } from '@/api/article'
-import { addComment } from '@/api/comment'
+import { addComment, deleteComment } from '@/api/comment'
 import { like, unlike } from '@/api/like'
 import { deleteArticle } from '@/api/article'
 import { useAuth, fetchMe } from '@/stores/auth'
@@ -25,7 +25,11 @@ const canDeleteArticle = computed(() => {
   if (!user.value || !article.value) return false
   return isAdmin.value || article.value.username === user.value.username
 })
-const canDeleteComment = computed(() => Boolean(user.value))
+function canDeleteComment(c) {
+  if (!user.value) return false
+  if (user.value.role === 1) return true
+  return Number(c.user_id) === Number(user.value.id)
+}
 
 async function load() {
   loading.value = true
@@ -75,6 +79,18 @@ async function submitComment() {
     alert(e.message)
   } finally {
     busy.value = false
+  }
+}
+
+async function removeComment(cid) {
+  if (!confirm('确定删除这条评论？')) return
+  try {
+    await deleteComment(cid)
+    const data = await getArticleDetail(id.value)
+    comments.value = data.comments
+    article.value.comment_count = data.comments.length
+  } catch (e) {
+    alert(e.message)
   }
 }
 
@@ -128,7 +144,7 @@ watch(() => route.params.id, () => load())
         <a class="link" @click="router.push({ path: '/login', query: { redirect: route.fullPath } })">登录</a> 后才能评论。
       </p>
 
-      <CommentList :comments="comments" :can-delete="canDeleteComment" @delete="() => {}" />
+      <CommentList :comments="comments" :can-delete="canDeleteComment" @delete="removeComment" />
     </section>
   </template>
 </template>
