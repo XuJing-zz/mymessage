@@ -12,8 +12,8 @@ dist/
 # ===== 运行日志 / 临时文件 =====
 *.log
 dev.log
-_*.php
-
+/_tmp_*.php
+/backend/_tmp_*.php
 # ===== 个人笔记（可能含账号信息）=====
 /REMBER
 
