@@ -1,0 +1,24 @@
+# ===== 敏感配置 =====
+/backend/db.php
+
+# ===== 依赖 =====
+node_modules/
+**/node_modules/
+
+# ===== 构建产物 =====
+dist/
+**/dist/
+
+# ===== 运行日志 / 临时文件 =====
+*.log
+dev.log
+_*.php
+
+# ===== 个人笔记（可能含账号信息）=====
+/REMBER
+
+# ===== 编辑器 =====
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
