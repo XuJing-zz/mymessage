@@ -12,11 +12,11 @@ export default defineConfig({
   server: {
     port: 5174,
     proxy: {
-      // /api/xxx  ->  http://localhost/mymessage/tp/public/index.php/api/xxx
+      // /api/xxx -> http://localhost/mymessage/tp8/public/index.php/api/xxx
       '/api': {
         target: 'http://localhost',
         changeOrigin: true,
-        rewrite: (p) => '/mymessage/tp/public/index.php' + p,
+        rewrite: (p) => '/mymessage/tp8/public/index.php' + p,
       },
     },
   },
