@@ -25,7 +25,11 @@ const routes = [
     children: [
       { path: '', redirect: '/admin/articles' },
       { path: 'articles', name: 'admin-articles', component: () => import('@/views/admin/ArticleList.vue') },
+      // 兼容原设计里的两个详情入口（未审核 / 已审核），都指向同一个详情页
+      { path: 'articles/uncomment/:id', redirect: to => '/admin/articles/' + to.params.id },
+      { path: 'articles/comment/:id',   redirect: to => '/admin/articles/' + to.params.id },
       { path: 'articles/:id', name: 'admin-article', component: () => import('@/views/admin/ArticleDetail.vue') },
+      { path: 'comments', name: 'admin-comments', component: () => import('@/views/admin/CommentList.vue') },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

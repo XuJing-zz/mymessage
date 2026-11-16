@@ -20,6 +20,7 @@ onMounted(() => fetchMe())
       <router-link class="logo" to="/admin/articles">🛠 管理后台</router-link>
       <nav>
         <router-link class="btn ghost" to="/admin/articles">文章管理</router-link>
+        <router-link class="btn ghost" to="/admin/comments">留言管理</router-link>
         <router-link class="btn ghost" to="/">前台</router-link>
         <span class="user">👤 {{ user?.username }}</span>
         <a class="btn ghost" @click="handleLogout">退出</a>

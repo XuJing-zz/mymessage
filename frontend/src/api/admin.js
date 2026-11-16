@@ -7,3 +7,4 @@ export const auditArticle = (id, status) =>
 export const adminDeleteComment = (id) =>
   request.post('/admin/comment_delete.php', { id })
 export const adminUsers = (params) => request.get('/admin/users.php', { params })
+export const adminComments = (params) => request.get('/admin/comments.php', { params })
