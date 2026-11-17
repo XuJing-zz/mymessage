@@ -8,8 +8,9 @@ return [
     'pathinfo_depr'         => '/',
     // 是否开启路由延迟解析
     'url_lazy_route'        => false,
-    // 是否强制使用路由
-    'url_route_must'        => false,
+    // 是否强制使用路由（true = 只能用 route/app.php 里定义的路由，
+    // 未匹配返回 404，而不是去猜「控制器/方法」）
+    'url_route_must'        => true,
     // 是否区分大小写
     'url_case_sensitive'    => false,
     // 自动扫描子目录分组
