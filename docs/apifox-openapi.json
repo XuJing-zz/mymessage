@@ -1,14 +1,14 @@
 {
   "openapi": "3.0.1",
   "info": {
-    "title": "我的博客 API",
-    "version": "1.0.0",
-    "description": "博客系统接口文档（PHP + MySQL）。\n\n统一返回：{ code, msg, data }，code=0 成功。\n\n错误码：0 成功 / 1 参数错误 / 401 未登录 / 403 无权限 / 404 不存在 / 1001 密码错误 / 1002 用户名已存在 / 1004 已点赞 / 1005 只能删自己的内容。\n\n鉴权：Session Cookie，先调登录接口，Apifox 会自动保存 PHPSESSID。\n\n文章状态：0 待审核 / 1 已通过 / 2 已驳回，前台只展示 1。"
+    "title": "我的博客 API（ThinkPHP 8）",
+    "version": "2.0.0",
+    "description": "ThinkPHP 8.1 + MySQL 博客接口。\n\n统一返回 { code, msg, data }，code=0 成功。\n\n错误码：0 成功 / 1 参数错误 / 401 未登录 / 403 无权限 / 404 不存在 / 1001 密码错误 / 1002 用户名存在 / 1004 已点赞 / 1005 只能删自己的。\n\n鉴权：Session Cookie，先调登录接口，Apifox 自动保存 PHPSESSID。\n\n注意：POST 接口不能直接用浏览器打开（会返回 404 JSON 提示「请求方法不对」）。"
   },
   "servers": [
     {
-      "url": "http://localhost/mymessage/backend",
-      "description": "本地开发"
+      "url": "http://localhost/mymessage/tp8/public/index.php",
+      "description": "本地 ThinkPHP 8"
     }
   ],
   "tags": [
@@ -18,11 +18,11 @@
     },
     {
       "name": "文章",
-      "description": "列表、详情、发布、删除"
+      "description": "列表 / 详情 / 发布 / 删除"
     },
     {
       "name": "评论",
-      "description": "列表、发表、删除"
+      "description": "列表 / 发表 / 删除"
     },
     {
       "name": "点赞",
@@ -34,17 +34,17 @@
     },
     {
       "name": "管理端",
-      "description": "审核、后台列表、用户"
+      "description": "审核 / 后台列表 / 用户"
     }
   ],
   "paths": {
-    "/api/register.php": {
+    "/api/register": {
       "post": {
         "tags": [
           "认证"
         ],
         "summary": "注册",
-        "description": "公开。用户名 3-20 字，密码至少 6 位。role 固定 0（普通用户），不接受前端传入。注册成功后自动登录。1002 = 用户名已存在。",
+        "description": "公开。用户名 3-20 字，密码≥6 位。role 固定 0。成功后自动登录。错误码 1002=用户名已存在。",
         "requestBody": {
           "required": true,
           "content": {
@@ -54,11 +54,11 @@
                 "properties": {
                   "username": {
                     "type": "string",
-                    "description": "用户名，3-20 字符"
+                    "description": "用户名 3-20 字"
                   },
                   "password": {
                     "type": "string",
-                    "description": "密码，至少 6 位"
+                    "description": "密码 ≥6 位"
                   }
                 }
               }
@@ -98,13 +98,13 @@
         }
       }
     },
-    "/api/login.php": {
+    "/api/login": {
       "post": {
         "tags": [
           "认证"
         ],
         "summary": "登录",
-        "description": "公开。校验密码后写入 session 并返回真实 role，前端据此决定跳 / 还是 /admin/articles。1001 = 用户名或密码错误。",
+        "description": "公开。返回真实 role，前端据此跳转。1001=用户名或密码错误。",
         "requestBody": {
           "required": true,
           "content": {
@@ -158,13 +158,13 @@
         }
       }
     },
-    "/api/logout.php": {
+    "/api/logout": {
       "post": {
         "tags": [
           "认证"
         ],
         "summary": "退出登录",
-        "description": "清除并销毁会话。",
+        "description": "清除会话。",
         "requestBody": {
           "required": true,
           "content": {
@@ -209,13 +209,13 @@
         }
       }
     },
-    "/api/me.php": {
+    "/api/me": {
       "get": {
         "tags": [
           "认证"
         ],
         "summary": "当前登录用户",
-        "description": "需要登录。返回 id/username/role；未登录返回 401。前端刷新页面后靠它恢复登录态。",
+        "description": "需要登录。未登录返回 401。前端刷新后靠它恢复登录态。",
         "parameters": [],
         "responses": {
           "200": {
@@ -250,13 +250,13 @@
         }
       }
     },
-    "/api/articles.php": {
+    "/api/articles": {
       "get": {
         "tags": [
           "文章"
         ],
         "summary": "文章列表（公开）",
-        "description": "只返回 status=1（已通过）的文章，按 id 倒序；每条带 like_count 与 comment_count。",
+        "description": "只返回 status=1（已通过），按 id 倒序，含 like_count / comment_count。",
         "parameters": [
           {
             "name": "page",
@@ -312,65 +312,13 @@
         }
       }
     },
-    "/api/article_comment.php": {
-      "get": {
-        "tags": [
-          "文章"
-        ],
-        "summary": "文章详情 + 评论",
-        "description": "公开可读。返回 article（含 like_count、liked）与 comments 数组。liked 表示当前用户是否点过赞，未登录恒为 false。文章不存在或未审核返回 404。",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "query",
-            "description": "文章 ID",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "example": 1
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "文章详情 + 评论",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "code": {
-                      "type": "integer",
-                      "example": 0
-                    },
-                    "msg": {
-                      "type": "string",
-                      "example": "ok"
-                    },
-                    "data": {
-                      "type": "object",
-                      "nullable": true
-                    }
-                  }
-                },
-                "example": {
-                  "code": 0,
-                  "msg": "ok",
-                  "data": {}
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/article_add.php": {
+    "/api/article": {
       "post": {
         "tags": [
           "文章"
         ],
         "summary": "发布文章",
-        "description": "需要登录。新文章 status 固定 0（待审核），前台不可见，需管理员审核。标题 ≤200 字，正文 ≥4 字。",
+        "description": "需要登录。新文章 status=0（待审核），前台不可见。标题≤200 字，正文≥4 字。",
         "requestBody": {
           "required": true,
           "content": {
@@ -380,11 +328,11 @@
                 "properties": {
                   "title": {
                     "type": "string",
-                    "description": "文章标题"
+                    "description": "标题"
                   },
                   "content": {
                     "type": "string",
-                    "description": "文章正文"
+                    "description": "正文"
                   }
                 }
               }
@@ -424,13 +372,13 @@
         }
       }
     },
-    "/api/articles_delete.php": {
+    "/api/article/delete": {
       "post": {
         "tags": [
           "文章"
         ],
         "summary": "删除文章",
-        "description": "需要登录。只能删自己的文章，管理员可删任何。外键级联会自动删该文章的评论与点赞。非本人且非管理员返回 403/1005。",
+        "description": "需要登录。只能删自己的，管理员可删任何。1005=不是本人内容。",
         "requestBody": {
           "required": true,
           "content": {
@@ -480,13 +428,13 @@
         }
       }
     },
-    "/api/comments.php": {
+    "/api/comments": {
       "get": {
         "tags": [
           "评论"
         ],
         "summary": "某篇文章的评论列表",
-        "description": "公开。返回该文章下全部评论，按 id 倒序。",
+        "description": "公开。按 id 倒序。",
         "parameters": [
           {
             "name": "article_id",
@@ -532,13 +480,13 @@
         }
       }
     },
-    "/api/comments_add.php": {
+    "/api/comment": {
       "post": {
         "tags": [
           "评论"
         ],
         "summary": "发表评论",
-        "description": "需要登录。文章必须存在且已审核。评论最多 500 字。",
+        "description": "需要登录。文章必须已审核。内容≤500 字。",
         "requestBody": {
           "required": true,
           "content": {
@@ -552,7 +500,7 @@
                   },
                   "content": {
                     "type": "string",
-                    "description": "评论内容，≤500 字"
+                    "description": "评论内容"
                   }
                 }
               }
@@ -592,13 +540,13 @@
         }
       }
     },
-    "/api/comments_delete.php": {
+    "/api/comment/delete": {
       "post": {
         "tags": [
           "评论"
         ],
         "summary": "删除评论",
-        "description": "需要登录。只能删自己的评论，管理员可删任何。非本人且非管理员返回 403/1005。",
+        "description": "需要登录。只能删自己的，管理员可删任何。",
         "requestBody": {
           "required": true,
           "content": {
@@ -648,7 +596,7 @@
         }
       }
     },
-    "/api/likes.php": {
+    "/api/like": {
       "post": {
         "tags": [
           "点赞"
@@ -704,7 +652,7 @@
         }
       }
     },
-    "/api/unlikes.php": {
+    "/api/unlike": {
       "post": {
         "tags": [
           "点赞"
@@ -760,13 +708,13 @@
         }
       }
     },
-    "/api/me_articles.php": {
+    "/api/me/articles": {
       "get": {
         "tags": [
           "我的"
         ],
         "summary": "我的文章",
-        "description": "需要登录。包含待审核(0)、已通过(1)、已驳回(2)，带 status_text 与赞/评论数。",
+        "description": "需要登录。含待审核/已通过/已驳回，带 status_text。",
         "parameters": [
           {
             "name": "page",
@@ -822,13 +770,13 @@
         }
       }
     },
-    "/api/me_comments.php": {
+    "/api/me/comments": {
       "get": {
         "tags": [
           "我的"
         ],
         "summary": "我的评论",
-        "description": "需要登录。带所属文章标题 article_title。",
+        "description": "需要登录。带 article_title。",
         "parameters": [
           {
             "name": "page",
@@ -884,13 +832,13 @@
         }
       }
     },
-    "/api/me_likes.php": {
+    "/api/me/likes": {
       "get": {
         "tags": [
           "我的"
         ],
         "summary": "我的点赞",
-        "description": "需要登录。返回我赞过的文章列表。",
+        "description": "需要登录。返回我赞过的文章。",
         "parameters": [
           {
             "name": "page",
@@ -946,13 +894,13 @@
         }
       }
     },
-    "/api/admin/articles.php": {
+    "/api/admin/articles": {
       "get": {
         "tags": [
           "管理端"
         ],
         "summary": "文章列表（后台）",
-        "description": "需要管理员。可看全部状态：0 待审核 / 1 已通过 / 2 已驳回；不传 status 返回全部。非管理员 403。",
+        "description": "需要管理员。status: 0待审 1通过 2驳回，不传=全部。",
         "parameters": [
           {
             "name": "page",
@@ -977,7 +925,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "0=待审核 1=已通过 2=已驳回，不传=全部",
+            "description": "0/1/2，不传=全部",
             "required": false,
             "schema": {
               "type": "integer",
@@ -987,7 +935,7 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "标题模糊搜索",
+            "description": "标题搜索",
             "required": false,
             "schema": {
               "type": "string",
@@ -1028,13 +976,13 @@
         }
       }
     },
-    "/api/admin/article.php": {
+    "/api/admin/article": {
       "get": {
         "tags": [
           "管理端"
         ],
         "summary": "文章详情（后台）",
-        "description": "需要管理员。可查看任何状态的文章，并附带 comments 数组，便于删除评论。",
+        "description": "需要管理员。可看任意状态，附带 comments。",
         "parameters": [
           {
             "name": "id",
@@ -1080,13 +1028,13 @@
         }
       }
     },
-    "/api/admin/articles_audit.php": {
+    "/api/admin/article/audit": {
       "post": {
         "tags": [
           "管理端"
         ],
         "summary": "审核文章",
-        "description": "需要管理员。status=1 通过、2 驳回。文章不存在返回 404。通过后前台立即可见。",
+        "description": "需要管理员。status=1 通过，2 驳回。",
         "requestBody": {
           "required": true,
           "content": {
@@ -1140,13 +1088,13 @@
         }
       }
     },
-    "/api/admin/comment_delete.php": {
+    "/api/admin/comment/delete": {
       "post": {
         "tags": [
           "管理端"
         ],
         "summary": "删除评论（管理员）",
-        "description": "需要管理员。可删除任何评论。",
+        "description": "需要管理员。可删任何评论。",
         "requestBody": {
           "required": true,
           "content": {
@@ -1196,13 +1144,13 @@
         }
       }
     },
-    "/api/admin/users.php": {
+    "/api/admin/comments": {
       "get": {
         "tags": [
           "管理端"
         ],
-        "summary": "用户列表",
-        "description": "需要管理员。返回 id/username/role/role_text/created_at，绝不返回 password。",
+        "summary": "留言列表（后台）",
+        "description": "需要管理员。带 article_title / username。",
         "parameters": [
           {
             "name": "page",
@@ -1227,7 +1175,79 @@
           {
             "name": "keyword",
             "in": "query",
-            "description": "用户名模糊搜索",
+            "description": "内容搜索",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": ""
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "留言列表（后台）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "type": "object",
+                      "nullable": true
+                    }
+                  }
+                },
+                "example": {
+                  "code": 0,
+                  "msg": "ok",
+                  "data": {}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": [
+          "管理端"
+        ],
+        "summary": "用户列表",
+        "description": "需要管理员。返回 role_text，绝不返回 password。",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "每页条数",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 20
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "用户名搜索",
             "required": false,
             "schema": {
               "type": "string",

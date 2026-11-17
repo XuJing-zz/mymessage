@@ -38,3 +38,14 @@ Route::post('api/admin/article/audit',  'Admin/audit');
 Route::post('api/admin/comment/delete', 'Admin/commentDelete');
 Route::get('api/admin/comments',        'Admin/comments');
 Route::get('api/admin/users',           'Admin/users');
+
+// 兜底：没匹配到任何路由时，也返回 JSON（而不是 HTML 报错页）
+// 常见原因：用 GET 打开了只允许 POST 的接口
+Route::miss(function () {
+    $method = request()->method();
+    return json([
+        'code' => 404,
+        'msg'  => '接口不存在或请求方法不对（当前 ' . $method . '）',
+        'data' => null,
+    ], 404);
+});
