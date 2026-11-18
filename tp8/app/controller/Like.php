@@ -20,6 +20,16 @@ class Like extends ApiBase
         $articleId = (int)$request->post('article_id', 0);// 文章ID
         if ($articleId <= 0) return $this->fail('缺少 article_id');// 文章ID不能为空
 
+        // ① 文章必须存在且已审核
+        $article = LkArticleModel::where('id', $articleId)->where('status', 1)->find();
+        if (!$article) return $this->fail('文章不存在或未审核', 404, 404);
+
+        // ② 不能重复点赞（否则会撞数据库唯一索引，抛 500）
+        $exists = LkModel::where('article_id', $articleId)
+            ->where('user_id', (int)$user['id'])
+            ->find();
+        if ($exists) return $this->fail('你已经点过赞了', 1004);
+
         LkModel::create([
             'article_id' => $articleId,
             'user_id'    => (int)$user['id'],
