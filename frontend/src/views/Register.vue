@@ -19,7 +19,7 @@ async function submit() {
 
   loading.value = true
   try {
-    await register(username.value.trim(), password.value)
+    await register(username.value.trim(), password.value, password2.value)
     router.replace('/')
   } catch (e) {
     error.value = e.message

@@ -26,8 +26,8 @@ export async function login(username, password) {
   return u
 }
 
-export async function register(username, password) {
-  const u = await authApi.register(username, password)
+export async function register(username, password, password2) {
+  const u = await authApi.register(username, password, password2)
   user.value = u
   loaded = true
   return u

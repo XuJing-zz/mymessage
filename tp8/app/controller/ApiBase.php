@@ -3,6 +3,7 @@ namespace app\controller;
 
 use think\Request;
 use think\Response;
+use think\Model;
 
 class ApiBase
 {
@@ -28,15 +29,18 @@ class ApiBase
     {
         $u = session('user');
         return is_array($u) ? $u : null;
-    }
+    }   
 
-    protected function mustLogin(): array
+    protected function mustLogin()
     {
-        $u = $this->currentUser();
-        if (!$u) return [null, $this->fail('请先登录', 401, 401)];
+        $u = is_array(session('user')) ? session('user') : null;
+        if (!$u) {
+            return [null, $this->fail('请先登录', 401, 401)];
+        }
         return [$u, null];
     }
 
+    
     protected function mustAdmin(): array
     {
         [$u, $err] = $this->mustLogin();
