@@ -1,60 +1,35 @@
 <?php
 namespace app\controller;
 
-use think\Request;
-use think\Response;
-use think\Model;
+use  think\Request;
+use  think\Response;
+use  think\Model;
 
-class ApiBase
+class ApiBase extends Model
 {
-    protected function ok($data = null, string $msg = 'ok'): Response
-    {
-        return json(['code' => 0, 'msg' => $msg, 'data' => $data]);
-    }
-
-    protected function fail(string $msg = 'error', int $code = 1, int $http = 200): Response
-    {
-        return json(['code' => $code, 'msg' => $msg, 'data' => null], $http);
-    }
-
-    protected function needPost(Request $request): ?Response
-    {
-        if (!$request->isPost()) {
-            return $this->fail('请用 POST 请求', 405, 405);
-        }
+    // 检查请求是否为POST方法
+    protected function needPost(Request $request){
+        if($request->isPost()){ return $this->fail('请使用POST方法',405,405); }
         return null;
     }
 
-    protected function currentUser(): ?array
-    {
+    protected function currentUser(){
         $u = session('user');
         return is_array($u) ? $u : null;
     }   
 
-    protected function mustLogin()
-    {
+    // 检查用户是否登录
+    protected function mustLogin(Request $request){
         $u = is_array(session('user')) ? session('user') : null;
-        if (!$u) {
-            return [null, $this->fail('请先登录', 401, 401)];
-        }
+        if(!$u){ return $this->fail('请先登录'); }
         return [$u, null];
     }
 
-    
-    protected function mustAdmin(): array
-    {
-        [$u, $err] = $this->mustLogin();
-        if ($err) return [null, $err];
-        if ((int)$u['role'] !== 1) return [null, $this->fail('需要管理员权限', 403, 403)];
-        return [$u, null];
-    }
-
-    /** 分页参数：[page, size, offset] */
-    protected function pageParams(Request $request, int $def = 10): array
-    {
-        $page = max(1, (int)$request->get('page', 1));
-        $size = (int)$request->get('size', $def);
-        $size = $size < 1 ? $def : min(50, $size);
-        return [$page, $size, ($page - 1) * $size];
+    //分页
+    protected function pageParams(Request $request, int $def = 10){   // 默认每页10条
+        $page = max(1, (int)$request->get('page', 1));          // 当前页码
+        $size = (int)$request->get('size', $def);             // 每页条数
+        $size = $size < 1 ? $def : min(50, $size);            // 最大50条
+        return [$page, $size, ($page-1)*$size];                 // 返回当前页码、每页条数、偏移量
     }
 }
