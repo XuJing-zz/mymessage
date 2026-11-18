@@ -14,7 +14,7 @@ class Article extends ApiBase
     // 文章列表
     public function index(Request $request)
     {
-        [$page, $size, $offset] = $this->pageParams($request, 10);
+        [$page, $size, $offset] = $this->pageParams($request, 5);
 
         $total = ArticleModel::where('status', 1)->count();
 

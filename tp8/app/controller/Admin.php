@@ -18,7 +18,7 @@ class Admin extends ApiBase
         [$admin, $err] = $this->mustAdmin();
         if ($err) return $err;
 
-        [$page, $size, $offset] = $this->pageParams($request, 10);
+        [$page, $size, $offset] = $this->pageParams($request, 5);
 
         $status = (string)$request->get('status', '');
         $kw     = trim((string)$request->get('keyword', ''));

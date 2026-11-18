@@ -24,7 +24,7 @@ const notice    = ref('')
 async function load(p = 1) {
   error.value = ''
   try {
-    const data = await getArticles({ page: p, size: 10 })
+    const data = await getArticles({ page: p })
     list.value  = data.list
     total.value = data.total
     page.value  = data.page

@@ -16,7 +16,7 @@ class Me extends ApiBase
     {
         [$user, $err] = $this->mustLogin();
         if ($err) return $err;
-        [$page, $size, $offset] = $this->pageParams($request, 10);
+        [$page, $size, $offset] = $this->pageParams($request, 5);
 
         $uid = (int)$user['id'];
 

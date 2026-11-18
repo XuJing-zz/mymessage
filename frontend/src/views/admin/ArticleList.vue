@@ -26,7 +26,6 @@ async function load(p = 1) {
   try {
     const data = await adminArticles({
       page: p,
-      size: 10,
       status: status.value === '' ? undefined : status.value,
     })
     list.value  = data.list

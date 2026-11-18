@@ -7,17 +7,17 @@ use think\Model;
 
 class ApiBase
 {
-    protected function ok($data = null, string $msg = 'ok'): Response
+    protected function ok($data = null, string $msg = 'ok')
     {
         return json(['code' => 0, 'msg' => $msg, 'data' => $data]);
     }
 
-    protected function fail(string $msg = 'error', int $code = 1, int $http = 200): Response
+    protected function fail(string $msg = 'error', int $code = 1, int $http = 200)
     {
         return json(['code' => $code, 'msg' => $msg, 'data' => null], $http);
     }
 
-    protected function needPost(Request $request): ?Response
+    protected function needPost(Request $request)
     {
         if (!$request->isPost()) {
             return $this->fail('请用 POST 请求', 405, 405);
@@ -25,7 +25,7 @@ class ApiBase
         return null;
     }
 
-    protected function currentUser(): ?array
+    protected function currentUser()
     {
         $u = session('user');
         return is_array($u) ? $u : null;
@@ -41,7 +41,7 @@ class ApiBase
     }
 
     
-    protected function mustAdmin(): array
+    protected function mustAdmin()
     {
         [$u, $err] = $this->mustLogin();
         if ($err) return [null, $err];
@@ -50,7 +50,7 @@ class ApiBase
     }
 
     /** 分页参数：[page, size, offset] */
-    protected function pageParams(Request $request, int $def = 10): array
+    protected function pageParams(Request $request, int $def = 5)
     {
         $page = max(1, (int)$request->get('page', 1));
         $size = (int)$request->get('size', $def);
