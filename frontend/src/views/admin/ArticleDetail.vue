@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { adminArticle, auditArticle, adminDeleteComment } from '@/api/admin'
+import { adminArticle, auditArticle, updateArticle, adminDeleteComment } from '@/api/admin'
 import { deleteArticle } from '@/api/article'
 import StatusTag from '@/components/StatusTag.vue'
 
@@ -12,6 +12,36 @@ const article  = ref(null)
 const comments = ref([])
 const error    = ref('')
 const loading  = ref(true)
+
+// 编辑状态
+const editing     = ref(false)
+const editTitle   = ref('')
+const editContent = ref('')
+
+function startEdit() {
+  editTitle.value   = article.value.title
+  editContent.value = article.value.content
+  editing.value     = true
+}
+
+function cancelEdit() {
+  editing.value = false
+}
+
+async function saveEdit() {
+  const t = editTitle.value.trim()
+  const c = editContent.value.trim()
+  if (t === '') { alert('标题不能为空'); return }
+  if (c === '') { alert('内容不能为空'); return }
+
+  try {
+    await updateArticle({ id: article.value.id, title: t, content: c })
+    editing.value = false
+    await load()
+  } catch (e) {
+    alert(e.message)
+  }
+}
 
 async function load() {
   loading.value = true
@@ -62,20 +92,38 @@ onMounted(load)
   <template v-else-if="article">
     <div class="card">
       <div class="list-head">
-        <h2>{{ article.title }}</h2>
+        <h2>{{ editing ? '编辑文章' : article.title }}</h2>
         <StatusTag :status="article.status" />
       </div>
       <p class="muted">{{ article.username }} · {{ article.created_at }} · ♡ {{ article.like_count }} · 💬 {{ article.comment_count }}</p>
 
-      <div class="art-content" style="white-space: pre-wrap">{{ article.content }}</div>
+      <!-- 编辑模式 -->
+      <template v-if="editing">
+        <label>标题
+          <input type="text" v-model="editTitle" maxlength="200">
+        </label>
+        <label>正文
+          <textarea v-model="editContent" rows="12"></textarea>
+        </label>
+      </template>
+
+      <!-- 查看模式 -->
+      <div v-else class="art-content" style="white-space: pre-wrap">{{ article.content }}</div>
 
       <div class="msg-foot">
-        <template v-if="article.status === 0">
-          <button class="btn primary" @click="audit(1)">通过</button>
-          <button class="btn ghost" @click="audit(2)">驳回</button>
+        <template v-if="editing">
+          <button class="btn primary" @click="saveEdit">保存修改</button>
+          <button class="btn ghost" @click="cancelEdit">取消</button>
         </template>
-        <button class="btn ghost" @click="removeArticle">删除文章</button>
-        <router-link class="del" to="/admin/articles">← 返回列表</router-link>
+        <template v-else>
+          <template v-if="article.status === 0">
+            <button class="btn primary" @click="audit(1)">通过</button>
+            <button class="btn ghost" @click="audit(2)">驳回</button>
+          </template>
+          <button class="btn ghost" @click="startEdit">编辑</button>
+          <button class="btn ghost" @click="removeArticle">删除文章</button>
+          <router-link class="del" to="/admin/articles">← 返回列表</router-link>
+        </template>
       </div>
     </div>
 

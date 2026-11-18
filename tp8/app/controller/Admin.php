@@ -117,6 +117,34 @@ class Admin extends ApiBase
         return $this->ok(null, $status === 1 ? '审核通过' : '已驳回');
     }
 
+    // 修改文章标题/正文
+    public function update(Request $request)
+    {
+        [$admin, $err] = $this->mustAdmin();
+        if ($err) return $err;
+        if ($err = $this->needPost($request)) return $err;
+
+        $id      = (int)$request->post('id', 0);
+        $title   = trim((string)$request->post('title', ''));
+        $content = trim((string)$request->post('content', ''));
+
+        if ($id <= 0)                         return $this->fail('缺少 id');
+        if ($title === '')                    return $this->fail('标题不能为空');
+        if (mb_strlen($title, 'UTF-8') > 200) return $this->fail('标题最多 200 字');
+        if ($content === '')                  return $this->fail('内容不能为空');
+
+        if (!AdArticleModel::where('id', $id)->find()) {
+            return $this->fail('文章不存在', 404, 404);
+        }
+
+        AdArticleModel::where('id', $id)->update([
+            'title'   => $title,
+            'content' => $content,
+        ]);
+
+        return $this->ok(null, '修改成功');
+    }
+
     // 管理员删评论
     public function commentDelete(Request $request)
     {

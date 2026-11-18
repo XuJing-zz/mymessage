@@ -35,6 +35,7 @@ Route::get('api/me/likes',    'Me/likes');
 Route::get('api/admin/articles',        'Admin/articles');
 Route::get('api/admin/article',         'Admin/article');
 Route::post('api/admin/article/audit',  'Admin/audit');
+Route::post('api/admin/article/update', 'Admin/update');
 Route::post('api/admin/comment/delete', 'Admin/commentDelete');
 Route::get('api/admin/comments',        'Admin/comments');
 Route::get('api/admin/users',           'Admin/users');
