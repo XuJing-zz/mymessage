@@ -11,21 +11,28 @@ class LikeModel    extends Model { protected $name = 'article_likes'; }
 
 class Article extends ApiBase
 {
-    // 文章列表
+    // 文章列表（random=1 时随机排序，用于首页信息流）
     public function index(Request $request)
     {
         [$page, $size, $offset] = $this->pageParams($request, 5);
+        $random = (int)$request->get('random', 0);
 
         $total = ArticleModel::where('status', 1)->count();
 
-        $rows = ArticleModel::alias('a')
+        $query = ArticleModel::alias('a')
             ->join('user u', 'u.id = a.user_id')
             ->where('a.status', 1)
             ->field('a.id,a.title,a.content,a.status,a.created_at,u.username')
-            ->order('a.id desc')
-            ->limit($offset, $size)
-            ->select()
-            ->toArray();
+            ->limit($offset, $size);
+
+        // 随机出文章：不分时间先后
+        if ($random === 1) {
+            $query->orderRaw('RAND()');
+        } else {
+            $query->order('a.id desc');
+        }
+
+        $rows = $query->select()->toArray();
 
         foreach ($rows as &$row) {
             $row['id']            = (int)$row['id'];
@@ -94,14 +101,21 @@ class Article extends ApiBase
         if ($title === '')   return $this->fail('标题不能为空');
         if ($content === '') return $this->fail('内容不能为空');
 
+        // 管理员可以直接发「已发布」，普通用户只能发待审核
+        $wantStatus = (int)$request->post('status', 0);
+        $status = ((int)$user['role'] === 1 && $wantStatus === 1) ? 1 : 0;
+
         $row = ArticleModel::create([
             'user_id' => (int)$user['id'],
             'title'   => $title,
             'content' => $content,
-            'status'  => 0,
+            'status'  => $status,
         ]);
 
-        return $this->ok(['id' => (int)$row->id], '提交成功，等待审核');
+        return $this->ok(
+            ['id' => (int)$row->id, 'status' => $status],
+            $status === 1 ? '发布成功' : '提交成功，等待审核'
+        );
     }
 
     // 删文章
