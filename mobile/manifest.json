@@ -32,7 +32,7 @@
     "mp-baidu" : { "usingComponents" : true },
     "mp-toutiao" : { "usingComponents" : true },
     "h5" : {
-        "title" : "我的博客",
+        "publicPath" : "/mobile/", "title" : "我的博客",
         "router" : { "mode" : "hash" }
     },
     "vueVersion" : "3"

@@ -2,7 +2,9 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-export default defineConfig({
+// 生产构建放在 /admin/ 子路径，开发时用 /
+export default defineConfig(({ mode }) => ({
+  base: mode === 'production' ? '/admin/' : '/',
   plugins: [vue()],
   resolve: {
     alias: {
@@ -20,4 +22,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

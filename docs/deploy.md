@@ -253,6 +253,9 @@ curl http://你的域名/api/articles?page=1
 
 ---
 
+> **已为你配好**：`vite.config.js` 里生产模式 `base = '/admin/'`，
+> 构建产物引用的就是 `/admin/assets/...`，直接上传 dist 即可，不用再改路径。
+
 ## 10. 部署 Vue 后台
 
 **本地构建：**
@@ -283,6 +286,9 @@ location /admin/ {
 > 登录态走 Cookie（同源）+ 后端也支持 Token，二者都行。
 
 ---
+
+> **已为你配好**：`mobile/manifest.json` 里 `h5.publicPath = '/mobile/'`，
+> 发行出来的 H5 资源路径就是 `/mobile/...`，放到 `public/mobile/` 即可。
 
 ## 11. 部署手机端 H5
 
