@@ -1,9 +1,20 @@
-// 统一请求封装：直接连 ThinkPHP（后端已开 CORS）
-// 手机端不依赖 Cookie：登录后拿 token，放到 X-Token 请求头里
-// 模拟器：用 127.0.0.1（localhost 可能被解析成 IPv6 ::1，而 nginx 只监听 IPv4，会连接超时）
-// 真机调试：把 HOST 改成电脑的局域网 IP，例如 '192.168.3.127'，手机和电脑连同一个 Wi-Fi
-const HOST = '127.0.0.1'
-const BASE = 'http://' + HOST + '/mymessage/tp8/public/index.php/api'
+// 统一请求封装：不依赖 Cookie，登录后把 token 放到 X-Token 请求头
+//
+// 自动区分环境：
+//   本地（localhost / 127.0.0.1）→ 直连本机 tp8
+//   线上（域名 / 公网 IP）      → 走同站点 /api（Nginx 转发到 ThinkPHP）
+//
+// 如果手机端和接口不在同一个域名，把 PROD_BASE 改成完整地址，例如：
+//   const PROD_BASE = 'https://api.example.com/api'
+const DEV_BASE  = 'http://127.0.0.1/mymessage/tp8/public/index.php/api'
+const PROD_BASE = (typeof location !== 'undefined')
+  ? location.origin + '/api'
+  : DEV_BASE
+
+const IS_LOCAL = (typeof location !== 'undefined') &&
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname === '::1')
+
+const BASE = IS_LOCAL ? DEV_BASE : PROD_BASE
 
 function request(options) {
   return new Promise((resolve, reject) => {
@@ -16,7 +27,7 @@ function request(options) {
       method: options.method || 'GET',
       data: options.data || {},
       header: header,
-      withCredentials: true,          // 浏览器环境下顺便带 Cookie
+      withCredentials: true,
       success: (res) => {
         const d = res.data
 
