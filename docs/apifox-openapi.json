@@ -2,13 +2,17 @@
     "openapi": "3.0.1",
     "info": {
         "title": "我的博客 API（ThinkPHP 8.1）",
-        "version": "2.1.0",
-        "description": "ThinkPHP 8.1 + MySQL 实现的博客接口，共 21 个。\n\n## 统一返回\n\ncode=0 成功，其余失败：\n1 参数错误 / 401 未登录 / 403 无权限 / 404 不存在 /\n1001 密码错误 / 1002 用户名已存在 / 1004 已点赞 / 1005 只能删自己的。\n\n## 鉴权\n\nSession Cookie：先调 login 或 register，Apifox 会自动保存 PHPSESSID。\n\n## 测试顺序\n\n1. POST /api/register\n2. GET  /api/me\n3. POST /api/article\n4. 管理员登录 → POST /api/admin/article/audit\n5. GET  /api/articles\n6. POST /api/like（再点一次返回 1004）\n7. POST /api/comment\n8. GET  /api/article?id=x\n\n## 注意\n\nPOST 接口不能直接在浏览器地址栏打开。"
+        "version": "3.0.0",
+        "description": "ThinkPHP 8.1 + MySQL 实现的博客接口，共 22 个。\n\n## 统一返回\n\n```json\n{ \"code\": 0, \"msg\": \"ok\", \"data\": {} }\n```\n\n| code | 含义 |\n|---|---|\n| 0 | 成功 |\n| 1 | 参数错误 |\n| 401 | 未登录 |\n| 403 | 无权限 |\n| 404 | 资源不存在 |\n| 1001 | 用户名或密码错误 |\n| 1002 | 用户名已存在 |\n| 1004 | 已经点过赞 |\n| 1005 | 只能删除自己的内容 |\n\n## 鉴权（两种任选）\n\n1. **Token（手机端推荐）**\n   调 `/api/login` 或 `/api/register` 拿到 `data.token`，\n   之后每个请求加请求头：`X-Token: <token>`（有效期 7 天）\n\n2. **Session Cookie（浏览器）**\n   登录后浏览器自动保存 `PHPSESSID`，同源请求自动携带\n\n> 后端先查 Session，再查 Token，两者都支持。\n\n## 测试顺序\n\n1. POST /api/login（admin / 123456）→ 复制 data.token\n2. 把 token 填到 Apifox 的环境变量或接口的 X-Token 头\n3. GET  /api/me\n4. POST /api/article（管理员带 status=1 可直接发布）\n5. GET  /api/articles → 立刻能看到\n6. POST /api/like → 再点一次应返回 1004\n7. POST /api/comment\n8. GET  /api/article?id=x\n9. POST /api/admin/article/update → 改标题，前台列表跟着变\n\n## 演示账号\n\n| 账号 | 密码 | 角色 |\n|---|---|---|\n| admin | 123456 | 管理员 |\n| stu01 | 123456 | 普通用户 |\n\n## 注意\n\nPOST 接口不能直接在浏览器地址栏打开，会返回 404 JSON（提示请求方法不对）。"
     },
     "servers": [
         {
             "url": "http://localhost/mymessage/tp8/public/index.php",
-            "description": "本地 ThinkPHP 8"
+            "description": "本地 Nginx（80）"
+        },
+        {
+            "url": "http://localhost:8000",
+            "description": "本地 php think run（8000）"
         }
     ],
     "tags": [
@@ -34,9 +38,25 @@
         },
         {
             "name": "管理端",
-            "description": "审核 / 后台列表 / 用户"
+            "description": "审核 / 修改 / 留言 / 用户"
         }
     ],
+    "components": {
+        "securitySchemes": {
+            "ApiKeyAuth": {
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Token",
+                "description": "登录/注册接口返回的 token，有效期 7 天。手机端用这个。"
+            },
+            "SessionAuth": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "PHPSESSID",
+                "description": "浏览器登录后自动携带的会话 Cookie。"
+            }
+        }
+    },
     "paths": {
         "/api/register": {
             "post": {
@@ -44,36 +64,7 @@
                     "认证"
                 ],
                 "summary": "注册",
-                "description": "公开。用户名 3-20 字，密码≥6 位，两次密码必须一致。成功后自动登录。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "username": {
-                                        "type": "string",
-                                        "description": "用户名 3-20 字"
-                                    },
-                                    "password": {
-                                        "type": "string",
-                                        "description": "密码 ≥6 位"
-                                    },
-                                    "password2": {
-                                        "type": "string",
-                                        "description": "确认密码"
-                                    }
-                                },
-                                "required": [
-                                    "username",
-                                    "password",
-                                    "password2"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "公开接口。用户名 3-20 字，密码至少 6 位，两次密码必须一致。成功后会直接登录，并返回 token（手机端用它鉴权）。",
                 "responses": {
                     "200": {
                         "description": "注册",
@@ -95,18 +86,16 @@
                                             "nullable": true
                                         }
                                     }
-                                }
-                            }
-                        }
-                    },
-                    "1002": {
-                        "description": "用户名已存在",
-                        "content": {
-                            "application/json": {
+                                },
                                 "example": {
-                                    "code": 1002,
-                                    "msg": "用户名已存在",
-                                    "data": null
+                                    "code": 0,
+                                    "msg": "注册成功",
+                                    "data": {
+                                        "id": 21,
+                                        "username": "testuser01",
+                                        "role": 0,
+                                        "token": "a1b2c3d4e5f6..."
+                                    }
                                 }
                             }
                         }
@@ -122,6 +111,51 @@
                                 }
                             }
                         }
+                    },
+                    "1002": {
+                        "description": "用户名已存在",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 1002,
+                                    "msg": "用户名已存在",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "username": {
+                                        "type": "string",
+                                        "description": "用户名，3-20 个字符",
+                                        "example": "testuser01"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "description": "密码，至少 6 位",
+                                        "example": "123456"
+                                    },
+                                    "password2": {
+                                        "type": "string",
+                                        "description": "确认密码，需与 password 一致",
+                                        "example": "123456"
+                                    }
+                                },
+                                "required": [
+                                    "username",
+                                    "password",
+                                    "password2"
+                                ]
+                            }
+                        }
                     }
                 }
             }
@@ -132,31 +166,7 @@
                     "认证"
                 ],
                 "summary": "登录",
-                "description": "公开。成功后写 Session 并下发 PHPSESSID。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "username": {
-                                        "type": "string",
-                                        "description": "用户名"
-                                    },
-                                    "password": {
-                                        "type": "string",
-                                        "description": "密码"
-                                    }
-                                },
-                                "required": [
-                                    "username",
-                                    "password"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "公开接口。成功后返回用户信息 + token。\n\n两种鉴权任选其一：\n- 手机端：把返回的 token 放进请求头 `X-Token`\n- 浏览器：自动带上 `PHPSESSID` Cookie",
                 "responses": {
                     "200": {
                         "description": "登录",
@@ -178,6 +188,16 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "登录成功",
+                                    "data": {
+                                        "id": 3,
+                                        "username": "admin",
+                                        "role": 1,
+                                        "token": "c88e9d9519499d45dfaf96e0fefaa9e3"
+                                    }
                                 }
                             }
                         }
@@ -194,6 +214,33 @@
                             }
                         }
                     }
+                },
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "username": {
+                                        "type": "string",
+                                        "description": "用户名",
+                                        "example": "admin"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "description": "密码",
+                                        "example": "123456"
+                                    }
+                                },
+                                "required": [
+                                    "username",
+                                    "password"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -203,18 +250,7 @@
                     "认证"
                 ],
                 "summary": "退出登录",
-                "description": "清空 Session。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": []
-                            }
-                        }
-                    }
-                },
+                "description": "清空 Session，并销毁请求头里的 token。",
                 "responses": {
                     "200": {
                         "description": "退出登录",
@@ -236,7 +272,31 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "退出成功",
+                                    "data": null
                                 }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": []
                             }
                         }
                     }
@@ -249,8 +309,7 @@
                     "认证"
                 ],
                 "summary": "当前登录用户",
-                "description": "前端刷新后靠它恢复登录态。",
-                "parameters": [],
+                "description": "前端刷新后靠它恢复登录态。未登录返回 401。",
                 "responses": {
                     "200": {
                         "description": "当前登录用户",
@@ -272,6 +331,15 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "id": 3,
+                                        "username": "admin",
+                                        "role": 1
+                                    }
                                 }
                             }
                         }
@@ -288,7 +356,15 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ]
             }
         },
         "/api/articles": {
@@ -297,29 +373,7 @@
                     "文章"
                 ],
                 "summary": "文章列表（公开）",
-                "description": "只返回 status=1，按 id 倒序，带点赞数与评论数。",
-                "parameters": [
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "页码",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 1
-                        }
-                    },
-                    {
-                        "name": "size",
-                        "in": "query",
-                        "description": "每页条数，默认 5，最大 50",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 5
-                        }
-                    }
-                ],
+                "description": "只返回已审核（status=1）的文章，按 id 倒序，附带点赞数和评论数。`random=1` 时随机排序。",
                 "responses": {
                     "200": {
                         "description": "文章列表（公开）",
@@ -341,44 +395,158 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 56,
+                                                "title": "示例标题",
+                                                "content": "正文摘要…",
+                                                "status": 1,
+                                                "created_at": "2026-11-23 10:00:00",
+                                                "username": "admin",
+                                                "like_count": 1,
+                                                "comment_count": 2
+                                            }
+                                        ],
+                                        "total": 52,
+                                        "page": 1,
+                                        "size": 5
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                },
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "页码，从 1 开始",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    },
+                    {
+                        "name": "size",
+                        "in": "query",
+                        "description": "每页条数，默认 5，最大 50",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 5
+                        }
+                    },
+                    {
+                        "name": "random",
+                        "in": "query",
+                        "description": "1=随机排序",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 0
+                        }
+                    }
+                ]
             }
         },
         "/api/article": {
+            "get": {
+                "tags": [
+                    "文章"
+                ],
+                "summary": "文章详情 + 评论",
+                "description": "公开接口。返回文章（含 liked 是否已赞）和全部评论。未审核或不存在返回 404。",
+                "responses": {
+                    "200": {
+                        "description": "文章详情 + 评论",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "integer",
+                                            "example": 0
+                                        },
+                                        "msg": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "article": {
+                                            "id": 56,
+                                            "title": "示例标题",
+                                            "content": "正文",
+                                            "status": 1,
+                                            "created_at": "2026-11-23 10:00:00",
+                                            "username": "admin",
+                                            "like_count": 1,
+                                            "comment_count": 2,
+                                            "liked": false
+                                        },
+                                        "comments": [
+                                            {
+                                                "id": 609,
+                                                "user_id": 11,
+                                                "content": "写得好",
+                                                "created_at": "2026-11-23 10:05:00",
+                                                "username": "stu01"
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "文章不存在或未审核",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 404,
+                                    "msg": "文章不存在或未审核",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "query",
+                        "description": "文章 ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 56
+                        }
+                    }
+                ]
+            },
             "post": {
                 "tags": [
                     "文章"
                 ],
                 "summary": "发布文章",
-                "description": "需要登录。新文章 status=0 待审核。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "title": {
-                                        "type": "string",
-                                        "description": "标题"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "正文"
-                                    }
-                                },
-                                "required": [
-                                    "title",
-                                    "content"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要登录。\n\n- 普通用户：只能发待审核（status 固定 0）\n- 管理员：可传 `status=1` 直接发布，前台立刻可见",
                 "responses": {
                     "200": {
                         "description": "发布文章",
@@ -400,6 +568,14 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "发布成功",
+                                    "data": {
+                                        "id": 61,
+                                        "status": 1
+                                    }
                                 }
                             }
                         }
@@ -416,6 +592,45 @@
                             }
                         }
                     }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "description": "标题，最多 200 字",
+                                        "example": "后台直发测试"
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "正文",
+                                        "example": "文章正文内容"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "description": "管理员可传 1 直接发布；普通用户传了也无效",
+                                        "example": "1"
+                                    }
+                                },
+                                "required": [
+                                    "title",
+                                    "content"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -425,26 +640,7 @@
                     "文章"
                 ],
                 "summary": "删除文章",
-                "description": "需要登录。本人或管理员。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {
-                                        "type": "string",
-                                        "description": "文章 ID"
-                                    }
-                                },
-                                "required": [
-                                    "id"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要登录。只能删自己的文章，管理员可删任何文章。",
                 "responses": {
                     "200": {
                         "description": "删除文章",
@@ -466,6 +662,11 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "删除成功",
+                                    "data": null
                                 }
                             }
                         }
@@ -482,18 +683,6 @@
                             }
                         }
                     },
-                    "1005": {
-                        "description": "只能删除自己的文章",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 1005,
-                                    "msg": "只能删除自己的文章",
-                                    "data": null
-                                }
-                            }
-                        }
-                    },
                     "404": {
                         "description": "文章不存在",
                         "content": {
@@ -505,6 +694,46 @@
                                 }
                             }
                         }
+                    },
+                    "1005": {
+                        "description": "只能删除自己的文章",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 1005,
+                                    "msg": "只能删除自己的文章",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {
+                                        "type": "string",
+                                        "description": "文章 ID",
+                                        "example": "61"
+                                    }
+                                },
+                                "required": [
+                                    "id"
+                                ]
+                            }
+                        }
                     }
                 }
             }
@@ -514,23 +743,11 @@
                 "tags": [
                     "评论"
                 ],
-                "summary": "评论列表",
-                "description": "公开，按 id 倒序。",
-                "parameters": [
-                    {
-                        "name": "article_id",
-                        "in": "query",
-                        "description": "文章 ID",
-                        "required": true,
-                        "schema": {
-                            "type": "integer",
-                            "example": 55
-                        }
-                    }
-                ],
+                "summary": "评论列表（公开）",
+                "description": "某篇文章的评论，按 id 倒序。",
                 "responses": {
                     "200": {
-                        "description": "评论列表",
+                        "description": "评论列表（公开）",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -549,11 +766,40 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 609,
+                                                "user_id": 11,
+                                                "content": "写得好",
+                                                "created_at": "2026-11-23 10:05:00",
+                                                "username": "stu01"
+                                            }
+                                        ],
+                                        "total": 1
+                                    }
                                 }
                             }
                         }
                     }
-                }
+                },
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "article_id",
+                        "in": "query",
+                        "description": "文章 ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 56
+                        }
+                    }
+                ]
             }
         },
         "/api/comment": {
@@ -562,31 +808,7 @@
                     "评论"
                 ],
                 "summary": "发表评论",
-                "description": "需要登录。文章必须已审核，内容≤500 字。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "article_id": {
-                                        "type": "string",
-                                        "description": "文章 ID"
-                                    },
-                                    "content": {
-                                        "type": "string",
-                                        "description": "评论内容"
-                                    }
-                                },
-                                "required": [
-                                    "article_id",
-                                    "content"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要登录。文章必须已审核，内容最多 500 字。",
                 "responses": {
                     "200": {
                         "description": "发表评论",
@@ -607,6 +829,13 @@
                                             "type": "object",
                                             "nullable": true
                                         }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "评论成功",
+                                    "data": {
+                                        "id": 610
                                     }
                                 }
                             }
@@ -636,6 +865,40 @@
                             }
                         }
                     }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "article_id": {
+                                        "type": "string",
+                                        "description": "文章 ID",
+                                        "example": "56"
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "评论内容，最多 500 字",
+                                        "example": "写得不错"
+                                    }
+                                },
+                                "required": [
+                                    "article_id",
+                                    "content"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -645,26 +908,7 @@
                     "评论"
                 ],
                 "summary": "删除评论",
-                "description": "需要登录。本人或管理员。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {
-                                        "type": "string",
-                                        "description": "评论 ID"
-                                    }
-                                },
-                                "required": [
-                                    "id"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要登录。只能删自己的评论，管理员可删任何评论。",
                 "responses": {
                     "200": {
                         "description": "删除评论",
@@ -686,6 +930,11 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "删除成功",
+                                    "data": null
                                 }
                             }
                         }
@@ -702,6 +951,18 @@
                             }
                         }
                     },
+                    "404": {
+                        "description": "评论不存在",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 404,
+                                    "msg": "评论不存在",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
                     "1005": {
                         "description": "只能删除自己的评论",
                         "content": {
@@ -713,16 +974,32 @@
                                 }
                             }
                         }
+                    }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
                     },
-                    "404": {
-                        "description": "评论不存在",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 404,
-                                    "msg": "评论不存在",
-                                    "data": null
-                                }
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {
+                                        "type": "string",
+                                        "description": "评论 ID",
+                                        "example": "610"
+                                    }
+                                },
+                                "required": [
+                                    "id"
+                                ]
                             }
                         }
                     }
@@ -735,26 +1012,7 @@
                     "点赞"
                 ],
                 "summary": "点赞",
-                "description": "需要登录。同一用户对同一文章只能赞一次，重复返回 1004。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "article_id": {
-                                        "type": "string",
-                                        "description": "文章 ID"
-                                    }
-                                },
-                                "required": [
-                                    "article_id"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要登录。同一用户对同一文章只能赞一次，重复点赞返回 1004。返回最新点赞数。",
                 "responses": {
                     "200": {
                         "description": "点赞",
@@ -775,6 +1033,14 @@
                                             "type": "object",
                                             "nullable": true
                                         }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "点赞成功",
+                                    "data": {
+                                        "liked": true,
+                                        "like_count": 2
                                     }
                                 }
                             }
@@ -816,6 +1082,34 @@
                             }
                         }
                     }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "article_id": {
+                                        "type": "string",
+                                        "description": "文章 ID",
+                                        "example": "56"
+                                    }
+                                },
+                                "required": [
+                                    "article_id"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -826,25 +1120,6 @@
                 ],
                 "summary": "取消点赞",
                 "description": "需要登录。返回最新点赞数。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "article_id": {
-                                        "type": "string",
-                                        "description": "文章 ID"
-                                    }
-                                },
-                                "required": [
-                                    "article_id"
-                                ]
-                            }
-                        }
-                    }
-                },
                 "responses": {
                     "200": {
                         "description": "取消点赞",
@@ -866,6 +1141,14 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "已取消点赞",
+                                    "data": {
+                                        "liked": false,
+                                        "like_count": 1
+                                    }
                                 }
                             }
                         }
@@ -882,6 +1165,34 @@
                             }
                         }
                     }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "article_id": {
+                                        "type": "string",
+                                        "description": "文章 ID",
+                                        "example": "56"
+                                    }
+                                },
+                                "required": [
+                                    "article_id"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -891,29 +1202,7 @@
                     "我的"
                 ],
                 "summary": "我的文章",
-                "description": "需要登录。含待审/通过/驳回，带 status_text。",
-                "parameters": [
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "页码",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 1
-                        }
-                    },
-                    {
-                        "name": "size",
-                        "in": "query",
-                        "description": "每页条数，默认 5",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 5
-                        }
-                    }
-                ],
+                "description": "需要登录。包含待审核/已通过/已驳回，带 status_text 字段。",
                 "responses": {
                     "200": {
                         "description": "我的文章",
@@ -935,6 +1224,28 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 61,
+                                                "title": "我的文章",
+                                                "content": "正文",
+                                                "user_id": 11,
+                                                "status": 0,
+                                                "status_text": "待审核",
+                                                "created_at": "2026-11-23 10:00:00",
+                                                "like_count": 0,
+                                                "comment_count": 0
+                                            }
+                                        ],
+                                        "total": 1,
+                                        "page": 1,
+                                        "size": 5
+                                    }
                                 }
                             }
                         }
@@ -951,16 +1262,15 @@
                             }
                         }
                     }
-                }
-            }
-        },
-        "/api/me/comments": {
-            "get": {
-                "tags": [
-                    "我的"
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
                 ],
-                "summary": "我的评论",
-                "description": "需要登录。带 article_title。",
                 "parameters": [
                     {
                         "name": "page",
@@ -975,14 +1285,23 @@
                     {
                         "name": "size",
                         "in": "query",
-                        "description": "每页条数，默认 20",
+                        "description": "每页条数，默认 5",
                         "required": false,
                         "schema": {
                             "type": "integer",
-                            "example": 20
+                            "example": 5
                         }
                     }
+                ]
+            }
+        },
+        "/api/me/comments": {
+            "get": {
+                "tags": [
+                    "我的"
                 ],
+                "summary": "我的评论",
+                "description": "需要登录。带 article_title 字段。",
                 "responses": {
                     "200": {
                         "description": "我的评论",
@@ -1004,6 +1323,24 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 609,
+                                                "article_id": 56,
+                                                "content": "写得好",
+                                                "created_at": "2026-11-23 10:05:00",
+                                                "article_title": "示例标题"
+                                            }
+                                        ],
+                                        "total": 1,
+                                        "page": 1,
+                                        "size": 20
+                                    }
                                 }
                             }
                         }
@@ -1020,16 +1357,15 @@
                             }
                         }
                     }
-                }
-            }
-        },
-        "/api/me/likes": {
-            "get": {
-                "tags": [
-                    "我的"
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
                 ],
-                "summary": "我的点赞",
-                "description": "需要登录。返回我赞过的文章。",
                 "parameters": [
                     {
                         "name": "page",
@@ -1051,7 +1387,16 @@
                             "example": 20
                         }
                     }
+                ]
+            }
+        },
+        "/api/me/likes": {
+            "get": {
+                "tags": [
+                    "我的"
                 ],
+                "summary": "我的点赞",
+                "description": "需要登录。返回我赞过的文章列表。",
                 "responses": {
                     "200": {
                         "description": "我的点赞",
@@ -1073,6 +1418,25 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 56,
+                                                "title": "示例标题",
+                                                "created_at": "2026-11-23 10:00:00",
+                                                "username": "admin",
+                                                "like_count": 2,
+                                                "comment_count": 1
+                                            }
+                                        ],
+                                        "total": 1,
+                                        "page": 1,
+                                        "size": 20
+                                    }
                                 }
                             }
                         }
@@ -1089,7 +1453,37 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "页码",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    },
+                    {
+                        "name": "size",
+                        "in": "query",
+                        "description": "每页条数，默认 20",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 20
+                        }
+                    }
+                ]
             }
         },
         "/api/admin/articles": {
@@ -1098,7 +1492,86 @@
                     "管理端"
                 ],
                 "summary": "文章列表（后台）",
-                "description": "需要管理员。status 不传=全部。",
+                "description": "需要管理员。status：0 待审核 / 1 已通过 / 2 已驳回，不传=全部。",
+                "responses": {
+                    "200": {
+                        "description": "文章列表（后台）",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "integer",
+                                            "example": 0
+                                        },
+                                        "msg": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 61,
+                                                "title": "待审文章",
+                                                "status": 0,
+                                                "status_text": "待审核",
+                                                "created_at": "2026-11-23 10:00:00",
+                                                "username": "stu01",
+                                                "like_count": 0,
+                                                "comment_count": 0
+                                            }
+                                        ],
+                                        "total": 1,
+                                        "page": 1,
+                                        "size": 5
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "未登录",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 401,
+                                    "msg": "未登录",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "需要管理员权限",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 403,
+                                    "msg": "需要管理员权限",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
                 "parameters": [
                     {
                         "name": "page",
@@ -1140,57 +1613,7 @@
                             "example": ""
                         }
                     }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "文章列表（后台）",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "code": {
-                                            "type": "integer",
-                                            "example": 0
-                                        },
-                                        "msg": {
-                                            "type": "string",
-                                            "example": "ok"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "nullable": true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "未登录",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 401,
-                                    "msg": "未登录",
-                                    "data": null
-                                }
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "需要管理员权限",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 403,
-                                    "msg": "需要管理员权限",
-                                    "data": null
-                                }
-                            }
-                        }
-                    }
-                }
+                ]
             }
         },
         "/api/admin/article": {
@@ -1199,19 +1622,7 @@
                     "管理端"
                 ],
                 "summary": "文章详情（后台）",
-                "description": "需要管理员。可看任意状态。",
-                "parameters": [
-                    {
-                        "name": "id",
-                        "in": "query",
-                        "description": "文章 ID",
-                        "required": true,
-                        "schema": {
-                            "type": "integer",
-                            "example": 55
-                        }
-                    }
-                ],
+                "description": "需要管理员。可查看任意状态的文章，附带全部评论。",
                 "responses": {
                     "200": {
                         "description": "文章详情（后台）",
@@ -1233,6 +1644,24 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "article": {
+                                            "id": 61,
+                                            "title": "待审文章",
+                                            "content": "正文",
+                                            "status": 0,
+                                            "status_text": "待审核",
+                                            "created_at": "2026-11-23 10:00:00",
+                                            "username": "stu01",
+                                            "like_count": 0,
+                                            "comment_count": 0
+                                        },
+                                        "comments": []
+                                    }
                                 }
                             }
                         }
@@ -1273,7 +1702,27 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "query",
+                        "description": "文章 ID",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 61
+                        }
+                    }
+                ]
             }
         },
         "/api/admin/article/audit": {
@@ -1282,31 +1731,7 @@
                     "管理端"
                 ],
                 "summary": "审核文章",
-                "description": "需要管理员。1=通过，2=驳回。",
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/x-www-form-urlencoded": {
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "id": {
-                                        "type": "string",
-                                        "description": "文章 ID"
-                                    },
-                                    "status": {
-                                        "type": "string",
-                                        "description": "1=通过 2=驳回"
-                                    }
-                                },
-                                "required": [
-                                    "id",
-                                    "status"
-                                ]
-                            }
-                        }
-                    }
-                },
+                "description": "需要管理员。status=1 通过，status=2 驳回。",
                 "responses": {
                     "200": {
                         "description": "审核文章",
@@ -1328,6 +1753,11 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "审核通过",
+                                    "data": null
                                 }
                             }
                         }
@@ -1368,16 +1798,15 @@
                             }
                         }
                     }
-                }
-            }
-        },
-        "/api/admin/comment/delete": {
-            "post": {
-                "tags": [
-                    "管理端"
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
                 ],
-                "summary": "删除评论（管理员）",
-                "description": "需要管理员。可删任何人评论。",
                 "requestBody": {
                     "required": true,
                     "content": {
@@ -1387,16 +1816,148 @@
                                 "properties": {
                                     "id": {
                                         "type": "string",
-                                        "description": "评论 ID"
+                                        "description": "文章 ID",
+                                        "example": "61"
+                                    },
+                                    "status": {
+                                        "type": "string",
+                                        "description": "1=通过，2=驳回",
+                                        "example": "1"
                                     }
                                 },
                                 "required": [
-                                    "id"
+                                    "id",
+                                    "status"
                                 ]
                             }
                         }
                     }
+                }
+            }
+        },
+        "/api/admin/article/update": {
+            "post": {
+                "tags": [
+                    "管理端"
+                ],
+                "summary": "修改文章",
+                "description": "需要管理员。修改标题与正文。改完后前台列表/详情会立即显示新标题。",
+                "responses": {
+                    "200": {
+                        "description": "修改文章",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "integer",
+                                            "example": 0
+                                        },
+                                        "msg": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "修改成功",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "未登录",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 401,
+                                    "msg": "未登录",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "需要管理员权限",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 403,
+                                    "msg": "需要管理员权限",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "文章不存在",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 404,
+                                    "msg": "文章不存在",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
                 },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {
+                                        "type": "string",
+                                        "description": "文章 ID",
+                                        "example": "61"
+                                    },
+                                    "title": {
+                                        "type": "string",
+                                        "description": "新标题",
+                                        "example": "修改后的标题"
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "新正文",
+                                        "example": "修改后的正文"
+                                    }
+                                },
+                                "required": [
+                                    "id",
+                                    "title",
+                                    "content"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/comment/delete": {
+            "post": {
+                "tags": [
+                    "管理端"
+                ],
+                "summary": "删除评论（管理员）",
+                "description": "需要管理员。可删除任何人的评论。",
                 "responses": {
                     "200": {
                         "description": "删除评论（管理员）",
@@ -1418,6 +1979,11 @@
                                             "nullable": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "删除成功",
+                                    "data": null
                                 }
                             }
                         }
@@ -1458,6 +2024,34 @@
                             }
                         }
                     }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {
+                                        "type": "string",
+                                        "description": "评论 ID",
+                                        "example": "609"
+                                    }
+                                },
+                                "required": [
+                                    "id"
+                                ]
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -1467,39 +2061,7 @@
                     "管理端"
                 ],
                 "summary": "留言列表（后台）",
-                "description": "需要管理员。带 article_title / username。",
-                "parameters": [
-                    {
-                        "name": "page",
-                        "in": "query",
-                        "description": "页码",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 1
-                        }
-                    },
-                    {
-                        "name": "size",
-                        "in": "query",
-                        "description": "每页条数，默认 20",
-                        "required": false,
-                        "schema": {
-                            "type": "integer",
-                            "example": 20
-                        }
-                    },
-                    {
-                        "name": "keyword",
-                        "in": "query",
-                        "description": "内容关键词",
-                        "required": false,
-                        "schema": {
-                            "type": "string",
-                            "example": ""
-                        }
-                    }
-                ],
+                "description": "需要管理员。按 id 倒序（最新在前），带 username 与 article_title。",
                 "responses": {
                     "200": {
                         "description": "留言列表（后台）",
@@ -1520,6 +2082,26 @@
                                             "type": "object",
                                             "nullable": true
                                         }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 609,
+                                                "article_id": 56,
+                                                "user_id": 11,
+                                                "content": "写得好",
+                                                "created_at": "2026-11-23 10:05:00",
+                                                "username": "stu01",
+                                                "article_title": "示例标题"
+                                            }
+                                        ],
+                                        "total": 605,
+                                        "page": 1,
+                                        "size": 20
                                     }
                                 }
                             }
@@ -1549,7 +2131,47 @@
                             }
                         }
                     }
-                }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "页码",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    },
+                    {
+                        "name": "size",
+                        "in": "query",
+                        "description": "每页条数，默认 20",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "example": 20
+                        }
+                    },
+                    {
+                        "name": "keyword",
+                        "in": "query",
+                        "description": "内容/文章标题关键词",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "example": ""
+                        }
+                    }
+                ]
             }
         },
         "/api/admin/users": {
@@ -1558,7 +2180,83 @@
                     "管理端"
                 ],
                 "summary": "用户列表",
-                "description": "需要管理员。返回 role_text，不返回 password。",
+                "description": "需要管理员。返回 role_text，不返回密码。",
+                "responses": {
+                    "200": {
+                        "description": "用户列表",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "code": {
+                                            "type": "integer",
+                                            "example": 0
+                                        },
+                                        "msg": {
+                                            "type": "string",
+                                            "example": "ok"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "nullable": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "code": 0,
+                                    "msg": "ok",
+                                    "data": {
+                                        "list": [
+                                            {
+                                                "id": 3,
+                                                "username": "admin",
+                                                "role": 1,
+                                                "role_text": "管理员",
+                                                "created_at": "2026-11-16 12:57:03"
+                                            }
+                                        ],
+                                        "total": 22,
+                                        "page": 1,
+                                        "size": 20
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "未登录",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 401,
+                                    "msg": "未登录",
+                                    "data": null
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "需要管理员权限",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": 403,
+                                    "msg": "需要管理员权限",
+                                    "data": null
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    },
+                    {
+                        "SessionAuth": []
+                    }
+                ],
                 "parameters": [
                     {
                         "name": "page",
@@ -1590,57 +2288,7 @@
                             "example": ""
                         }
                     }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "用户列表",
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "type": "object",
-                                    "properties": {
-                                        "code": {
-                                            "type": "integer",
-                                            "example": 0
-                                        },
-                                        "msg": {
-                                            "type": "string",
-                                            "example": "ok"
-                                        },
-                                        "data": {
-                                            "type": "object",
-                                            "nullable": true
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "未登录",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 401,
-                                    "msg": "未登录",
-                                    "data": null
-                                }
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "需要管理员权限",
-                        "content": {
-                            "application/json": {
-                                "example": {
-                                    "code": 403,
-                                    "msg": "需要管理员权限",
-                                    "data": null
-                                }
-                            }
-                        }
-                    }
-                }
+                ]
             }
         }
     }
