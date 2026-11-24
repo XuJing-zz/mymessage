@@ -11,21 +11,28 @@ class LikeModel    extends Model { protected $name = 'article_likes'; }
 
 class Article extends ApiBase
 {
-    // 文章列表
+    // 文章列表（random=1 时随机排序，用于首页信息流）
     public function index(Request $request)
     {
         [$page, $size, $offset] = $this->pageParams($request, 5);
+        $random = (int)$request->get('random', 0);
 
         $total = ArticleModel::where('status', 1)->count();
 
-        $rows = ArticleModel::alias('a')
+        $query = ArticleModel::alias('a')
             ->join('user u', 'u.id = a.user_id')
             ->where('a.status', 1)
             ->field('a.id,a.title,a.content,a.status,a.created_at,u.username')
-            ->order('a.id desc')
-            ->limit($offset, $size)
-            ->select()
-            ->toArray();
+            ->limit($offset, $size);
+
+        // 随机出文章：不分时间先后
+        if ($random === 1) {
+            $query->orderRaw('RAND()');
+        } else {
+            $query->order('a.id desc');
+        }
+
+        $rows = $query->select()->toArray();
 
         foreach ($rows as &$row) {
             $row['id']            = (int)$row['id'];
@@ -36,6 +43,31 @@ class Article extends ApiBase
         unset($row);
 
         return $this->ok(['list' => $rows, 'total' => $total, 'page' => $page, 'size' => $size]);
+    }
+
+    // 批量取点赞数/评论数（首页从详情页返回时静默同步数字）
+    public function counts(Request $request)
+    {
+        $ids = (string)$request->get('ids', '');
+        $arr = [];
+        foreach (explode(',', $ids) as $v) {
+            $v = (int)$v;
+            if ($v > 0) $arr[] = $v;
+        }
+        $arr = array_values(array_unique($arr));
+        if (!$arr) return $this->ok([]);
+
+        $likes = LikeModel::whereIn('article_id', $arr)->group('article_id')->column('COUNT(*)', 'article_id');
+        $cmts  = CommentModel::whereIn('article_id', $arr)->group('article_id')->column('COUNT(*)', 'article_id');
+
+        $out = [];
+        foreach ($arr as $id) {
+            $out[$id] = [
+                'like_count'    => (int)($likes[$id] ?? 0),
+                'comment_count' => (int)($cmts[$id] ?? 0),
+            ];
+        }
+        return $this->ok($out);
     }
 
     // 文章详情（公开接口，未登录也能看）

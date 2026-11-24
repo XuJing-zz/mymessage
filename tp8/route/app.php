@@ -8,6 +8,7 @@ Route::post('api/logout',   'Auth/logout');
 Route::get('api/me',        'Auth/me');
 
 // 文章
+Route::get('api/articles/counts',  'Article/counts');
 Route::get('api/articles',        'Article/index');
 Route::get('api/article',         'Article/read');
 Route::post('api/article',        'Article/add');

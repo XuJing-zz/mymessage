@@ -27,7 +27,7 @@ class Auth extends ApiBase {
 
         $row = User::create([
             'username' => $username,
-            'password' => $password,
+            'password' => password_hash($password, PASSWORD_DEFAULT),
             'role' => 0,
         ]);
 
@@ -51,7 +51,21 @@ class Auth extends ApiBase {
 
         $user = User::where('username', $username)->find();
         if(!$user){ return $this->fail('用户名不存在'); }
-        if($user->password !== $password){ return $this->fail('密码错误'); }
+
+        // 密码校验：新数据是 password_hash 的哈希，老数据是明文（登录成功就顺手升级成哈希）
+        $stored = (string)$user->password;
+        $ok = false;
+        if(preg_match('/^\$2[axy]\$/', $stored)){
+            $ok = password_verify($password, $stored);
+        } else {
+            $ok = hash_equals($stored, $password);
+            if($ok){
+                User::where('id', $user->id)->update([
+                    'password' => password_hash($password, PASSWORD_DEFAULT),
+                ]);
+            }
+        }
+        if(!$ok){ return $this->fail('密码错误'); }
 
         $u = ['id'=>(int)$user->id, 'username'=>$user->username, 'role'=>(int)$user->role];
         session('user', $u);

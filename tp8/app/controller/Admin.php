@@ -34,7 +34,7 @@ class Admin extends ApiBase
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('a.id,a.title,a.status,a.created_at,u.username')
+        $rows = $query->field('a.id,a.title,a.content,a.status,a.created_at,u.username')
             ->order('a.id desc')
             ->limit($offset, $size)
             ->select()
@@ -172,19 +172,28 @@ class Admin extends ApiBase
 
         [$page, $size, $offset] = $this->pageParams($request, 20);
         $kw = trim((string)$request->get('keyword', ''));
+        $aid = (int)$request->get('article_id', 0);
 
         $query = AdCommentModel::alias('c')
             ->join('user u', 'u.id = c.user_id')
             ->join('article a', 'a.id = c.article_id');
 
+        // 按文章筛选
+        if ($aid > 0) {
+            $query->where('c.article_id', $aid);
+        }
+        // 关键词：同时匹配评论内容与所属文章标题
         if ($kw !== '') {
-            $query->whereLike('c.content', '%' . $kw . '%');
+            $query->where(function ($q) use ($kw) {
+                $q->whereLike('c.content', '%' . $kw . '%')
+                  ->whereOr('a.title', 'like', '%' . $kw . '%');
+            });
         }
 
         $total = (clone $query)->count();
 
         $rows = $query->field('c.id,c.article_id,c.user_id,c.content,c.created_at,u.username,a.title as article_title')
-            ->order('c.id desc')
+            ->order('c.article_id asc,c.id desc')
             ->limit($offset, $size)
             ->select()
             ->toArray();
