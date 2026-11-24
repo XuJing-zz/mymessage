@@ -349,15 +349,183 @@ app/Article.php 等    模型（extends think\Model），唯一接触数据库�
 
 ---
 
-## 十、说明
+## 十、说明（安全）
 
-本项目用于课程实践，密码按演示要求以**明文**存储（`user.password`）。
+密码已从明文升级为哈希（`tp8/app/controller/Auth.php`）：
 
-生产环境必须改为：
+- 注册：`password_hash($password, PASSWORD_DEFAULT)`
+- 登录：先 `password_verify()`；对历史明文账号比对成功后**自动升级**为哈希
 
-```php
-password_hash($password, PASSWORD_DEFAULT)     // 写入
-password_verify($input, $user['password'])     // 校验
+仍需在生产环境补充：CSRF 防护、登录失败次数限制、接口频率限制、HTTPS。
+
+---
+
+## 十一、UniApp 客户端（H5 + 微信小程序）
+
+前端除 Vue 后台外，另有一套 uni-app 客户端，目录 `uniapp/`，编译目标：
+
+- **H5**：手机浏览器访问，线上 `http://43.143.237.166/h5/`
+- **微信小程序**：微信开发者工具导入 `uniapp/unpackage/dist/dev/mp-weixin`，AppID `wx84fb3124032ed39e`
+
+### 本地跑 H5
+
+```bat
+D:\phpstudy_pro\WWW\message_uniApp\dev-h5.bat
 ```
 
-同时应补充：CSRF 防护、登录失败次数限制、接口频率限制、HTTPS。
+会依次拉起 MySQL(3306) → php-cgi(9000) → Nginx(80) → Vite 开发服务器(5173)。
+
+> 必须用 `http://127.0.0.1:5173/`；`localhost` 会解析到 `::1`，Vite 只监听 IPv4，会连不上。
+
+### 构建并部署 H5
+
+```powershell
+cd D:\HBuilderX\plugins\uniapp-cli-vite
+$env:UNI_PLATFORM='h5'; $env:UNI_INPUT_DIR='D:\phpstudy_pro\WWW\message_uniApp'; $env:NODE_ENV='production'
+node node_modules\vite\bin\vite.js build --config vite.config.js --base=/h5/
+# 产物：D:\phpstudy_pro\WWW\message_uniApp\dist  → 上传到服务器 public/h5/
+```
+
+### 接口地址
+
+`service/request.js` 按环境自动切换：
+
+- 本地：`http://127.0.0.1/mymessage/tp8/public/index.php/api`
+- 线上 H5：`location.origin + '/api'`
+- 登录态：`X-Token` 请求头（后端 `ApiBase::currentUser()` 兼容 Session 与 X-Token）
+
+---
+
+## 十二、线上部署（宝塔面板）
+
+| 项 | 值 |
+|---|---|
+| 访问地址 | `http://43.143.237.166/` → 302 → `/h5/` |
+| 服务器 | OpenCloudOS 9.6 · Nginx 1.30.7 · PHP 8.1.35 · MySQL 5.7.44 |
+| 站点根目录 | `/www/wwwroot/mymessage/public` |
+| 数据库 | `message_board`（utf8mb4）· 账号 `mymessage` |
+| 面板 | `http://43.143.237.166:8888/` |
+
+### 建站后必须补的 4 处（否则接口必坏）
+
+1. **`public/.user.ini`**（宝塔每次重建站点都会重置）
+
+   ```bash
+   cd /www/wwwroot/mymessage/public
+   chattr -i .user.ini
+   printf 'open_basedir=/www/wwwroot/mymessage/:/tmp/
+' > .user.ini
+   chattr +i .user.ini
+   /etc/init.d/php-fpm-81 reload
+   ```
+
+2. **`/h5/` 静态站 + 首页跳转**（`vhost/rewrite/站点名.conf`）
+
+   ```nginx
+   location = / { return 302 /h5/; }
+   location /h5/ { root /www/wwwroot/mymessage/public; index index.html; try_files $uri $uri/ /h5/index.html; }
+   ```
+
+3. **ThinkPHP PATH_INFO 重写**（同上文件）
+
+   ```nginx
+   location / { if (!-e $request_filename) { rewrite ^/(.*)$ /index.php/$1 last; } }
+   ```
+
+4. **权限**
+
+   ```bash
+   chown -R www:www /www/wwwroot/mymessage
+   chmod -R 755 /www/wwwroot/mymessage
+   nginx -t && nginx -s reload
+   ```
+
+### 验收命令（服务器上带 Host 头）
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' -H 'Host: 43.143.237.166' http://127.0.0.1/h5/
+curl -s -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/articles?page=1&size=1' | head -c 200
+curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'username=admin&password=123456'
+```
+
+---
+
+## 十三、测试账号
+
+| 角色 | 账号 | 密码 | 说明 |
+|---|---|---|---|
+| 管理员 | `admin` | `123456` | 审核文章、管理留言与用户 |
+| 普通用户 | `user11` ~ `user30` | `123456` | 发文章、点赞、评论 |
+| 普通用户 | `tp8test` | `123456` | 接口测试账号 |
+| 演示学员 | `user01` | `123456` | 早期种子数据 |
+
+> 线上与本地是同一套数据（2026-11-24 导出后导入）。
+
+---
+
+## 十四、接口文档与 Apifox
+
+- 文件：`docs/apifox-openapi.json`（OpenAPI 3.0，21 个接口）
+- 本地环境：`http://127.0.0.1/mymessage/tp8/public/index.php/api`
+- **线上环境**：`http://43.143.237.166/api`
+
+### Apifox 里加「线上」环境
+
+1. Apifox → 项目设置 → 环境管理 → 新建环境，命名 `线上`
+2. 新增变量 `baseUrl` = `http://43.143.237.166/api`
+3. 接口里把 URL 改成 `{{baseUrl}}/articles`
+4. 抽测三条：
+   - `POST /login`（`username=admin&password=123456`）→ 拿 `data.token`
+   - `GET /articles?page=1&size=5` → `code=0`
+   - `POST /like`（Header `X-Token: {{token}}`，body `id=文章id`）→ `like_count` 增加
+
+自动化脚本：`work/apifox_run.js`（按 openapi 跑全部 21 个路径，本地/线上都能跑）。
+
+---
+
+## 十五、Navicat 连接线上 MySQL
+
+| 项 | 值 |
+|---|---|
+| 主机 | `43.143.237.166` |
+| 端口 | `3306` |
+| 数据库 | `message_board` |
+| 用户名 | `mymsg_remote` |
+| 密码 | `Mymsg2026At_Remote` |
+
+该账号已在 MySQL 中创建为 `'mymsg_remote'@'%'`，仅授予该库的 `SELECT/INSERT/UPDATE/DELETE`。
+
+**还差一步：云厂商安全组放行 3306**（腾讯云控制台 → 实例 → 安全组 → 入站规则 → 添加 `TCP:3306`，来源建议填你的公网 IP，而不是 `0.0.0.0/0`）。服务器本机防火墙已放行，当前从外网连会报 `10060`，就是安全组没放。
+
+> 演示结束后建议：把 3306 规则删掉或只留自己 IP，并把密码换掉；密码不要提交到公开仓库。
+
+连接成功后能看到 4 张表：`user`、`article`、`comment`、`article_likes`，以及线上产生的文章/点赞数据。
+
+---
+
+## 十六、结业验收清单
+
+- [x] 后端只用 `think\Model`，业务代码无 `Db::`（`grep -r "Db::" tp8/app` 为空）
+- [x] 控制器 / 模型 / 接口 / 前端分工清楚（见「二、目录结构」）
+- [x] 点赞必须登录；重复点赞返回 `code=1004`（`article_likes` 唯一索引兜底）
+- [x] 管理后台：文章审核（看正文）、删除文章、留言按文章分组、用户列表
+- [x] 手机端：登录、列表、详情、点赞、留言
+- [x] 公网可访问：`http://43.143.237.166/`
+- [x] Apifox：`docs/apifox-openapi.json`，本地 22 项自动化通过
+- [ ] Navicat 连线上库：**等安全组放行 3306**
+- [x] Git：本地提交 + 标签（远端推送受网络限制，见下）
+
+---
+
+## 十七、Git
+
+本地仓库：`D:\phpstudy_pro\WWW\mymessage`（remote `https://github.com/XuJing-zz/mymessage.git`）
+
+```bash
+git log --oneline
+git tag           # v1.0.0-final
+```
+
+> 当前环境访问不到 github.com:443（本机与服务器均如此），推送需代理或凭据；代码已全部提交到本地 `main`。
+
