@@ -126,14 +126,21 @@ class Article extends ApiBase
         if ($title === '')   return $this->fail('标题不能为空');
         if ($content === '') return $this->fail('内容不能为空');
 
+        // 管理员可以直接发「已发布」，普通用户只能发待审核
+        $wantStatus = (int)$request->post('status', 0);
+        $status = ((int)$user['role'] === 1 && $wantStatus === 1) ? 1 : 0;
+
         $row = ArticleModel::create([
             'user_id' => (int)$user['id'],
             'title'   => $title,
             'content' => $content,
-            'status'  => 0,
+            'status'  => $status,
         ]);
 
-        return $this->ok(['id' => (int)$row->id], '提交成功，等待审核');
+        return $this->ok(
+            ['id' => (int)$row->id, 'status' => $status],
+            $status === 1 ? '发布成功' : '提交成功，等待审核'
+        );
     }
 
     // 删文章

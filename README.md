@@ -117,6 +117,8 @@ mymessage/
 
 ---
 
+> 部署到公网（宝塔）：见 [docs/deploy.md](docs/deploy.md)
+
 ## 三、快速开始
 
 ### 1. 环境要求
