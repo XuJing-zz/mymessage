@@ -8,6 +8,64 @@
 
 ---
 
+## 零、速查（先看这里）
+
+### 线上演示（公网）
+
+| 端 | 地址 |
+|---|---|
+| 手机端 H5 | http://43.143.237.166/h5/ |
+| 后端接口 | http://43.143.237.166/api/articles?page=1 |
+| 宝塔面板 | https://43.143.237.166:8888/tencentcloud |
+
+### 本地跑起来（Windows + phpStudy）
+
+```powershell
+# 1. 起 MySQL
+Start-Process "D:\phpstudy_pro\Extensions\MySQL5.7.26\bin\mysqld.exe" `
+  -ArgumentList "--defaults-file=D:\phpstudy_pro\Extensions\MySQL5.7.26\my.ini" `
+  -WorkingDirectory "D:\phpstudy_pro\Extensions\MySQL5.7.26" -WindowStyle Hidden
+
+# 2. 起 Nginx
+Start-Process "D:\phpstudy_pro\Extensions\Nginx1.15.11\nginx.exe" `
+  -WorkingDirectory "D:\phpstudy_pro\Extensions\Nginx1.15.11"
+
+# 3. 起 PHP-CGI（必须带 -b，否则 502）
+Start-Process "D:\phpstudy_pro\Extensions\php\php8.0.30nts\php-cgi.exe" `
+  -ArgumentList "-b","127.0.0.1:9000" -WindowStyle Hidden `
+  -Environment @{ PHP_FCGI_CHILDREN="4"; PHP_FCGI_MAX_REQUESTS="500" }
+
+# 4. 起前端
+cd D:\phpstudy_pro\WWW\mymessage\frontend
+npm run dev
+```
+
+- 前端：http://localhost:5174
+- 后端：http://localhost/mymessage/tp8/public/index.php/api/articles
+- 或者用内置服务器：`cd tp8 && php think run`（8000 端口）
+
+### Apifox 在哪
+
+```
+docs/apifox-openapi.json      ← 导入这个文件
+```
+
+导入步骤见[十二、接口文档与 Apifox](#十二接口文档与-apifox)。
+
+### 测试账号
+
+| 角色 | 账号 | 密码 |
+|---|---|---|
+| 管理员 | `admin` | `123456` |
+| 普通用户 | `user11` ~ `user30` | `123456` |
+| 测试账号 | `tp8test` | `123456` |
+
+### 部署到公网
+
+完整步骤见 **[docs/deploy.md](docs/deploy.md)**（宝塔：装环境 → 建站 → 建库导数据 → 伪静态 → 传前端 → 关调试）。
+
+---
+
 ## 一、技术栈
 
 | 层 | 技术 |
@@ -44,9 +102,16 @@ mymessage/
 │  ├─ vite.config.js         端口 5174 + /api 代理
 │  └─ package.json
 │
+├─ mobile/                   手机端（uni-app，HBuilderX 项目）
+│  ├─ pages/                 8 个页面（列表 / 详情 / 登录 / 发布 / 我的 / 审核 / 留言 / 用户）
+│  ├─ service/               接口封装（uni.request + X-Token）
+│  ├─ components/TabBar.vue  底部导航
+│  └─ pages.json / manifest.json
+│
 └─ docs/
-   ├─ apifox-openapi.json    接口文档（OpenAPI 3.0，21 个接口）
+   ├─ apifox-openapi.json    接口文档（OpenAPI 3.0，22 个路径）
    ├─ api.md                 接口速查表
+   ├─ deploy.md              宝塔部署手册
    └─ mysqli-glossary.md     mysqli 中英对照词表
 ```
 
@@ -158,81 +223,7 @@ CREATE TABLE article_likes (
 
 ---
 
-## 四、测试账号
-
-| 角色 | 账号 | 密码 | 说明 |
-|---|---|---|---|
-| 管理员 | `admin` | `123456` | role=1，可进后台 |
-| 普通用户 | `stu01` ~ `stu10` | `123456` | role=0 |
-
-> 演示数据：10 个用户 × 5 篇文章 = 50 篇，每篇 12 条评论、11 个点赞。
-> 每人 4 篇已通过、1 篇待审核，用于演示后台审核流程。
-
-**把普通用户提为管理员：**
-
-```sql
-UPDATE `user` SET role = 1 WHERE username = 'stu01';
-```
-
-> 改完必须**退出重新登录**，role 存在 Session 里。
-
----
-
-## 五、接口文档（Apifox 项目入口）
-
-### 入口
-
-```
-docs/apifox-openapi.json      OpenAPI 3.0.1，21 个接口，66 KB
-```
-
-### 导入步骤
-
-1. 打开 Apifox，新建或进入项目
-2. **项目设置 → 导入数据 → OpenAPI / Swagger**
-3. 选择本仓库的 `docs/apifox-openapi.json`
-4. 导入模式选 **覆盖**（同路径接口会被更新，不产生重复）
-5. 点确定
-
-导入后左侧出现 6 个分组：
-
-```
-认证    POST /api/register   POST /api/login   POST /api/logout   GET /api/me
-文章    GET  /api/articles   GET  /api/article  POST /api/article  POST /api/article/delete
-评论    GET  /api/comments   POST /api/comment  POST /api/comment/delete
-点赞    POST /api/like       POST /api/unlike
-我的    GET  /api/me/articles  GET /api/me/comments  GET /api/me/likes
-管理端  GET  /api/admin/articles      GET  /api/admin/article
-        POST /api/admin/article/audit POST /api/admin/article/update
-        POST /api/admin/comment/delete
-        GET  /api/admin/comments      GET /api/admin/users
-```
-
-### 服务地址
-
-```
-http://localhost/mymessage/tp8/public/index.php
-```
-
-### 测试顺序
-
-```
-1. POST /api/register      注册并自动登录
-2. GET  /api/me            确认登录态（Cookie 生效）
-3. POST /api/article       发文章（status=0 待审核）
-4. 管理员登录 → POST /api/admin/article/audit  审核通过
-5. GET  /api/articles      能看到新文章
-6. POST /api/like          点赞；再点一次应返回 1004
-7. POST /api/comment       发评论
-8. GET  /api/article?id=x  文章 + 评论 + 是否已赞
-```
-
-> ⚠️ POST 接口不能直接粘贴到浏览器地址栏，会返回
-> `{"code":404,"msg":"接口不存在或请求方法不对（当前 GET）"}`。
-
----
-
-## 六、接口约定
+## 四、接口约定
 
 ### 统一返回格式
 
@@ -273,7 +264,7 @@ Session Cookie：
 
 ---
 
-## 七、功能清单
+## 五、功能清单
 
 ### 前台
 
@@ -296,7 +287,7 @@ Session Cookie：
 
 ---
 
-## 八、开发说明
+## 六、开发说明
 
 ### 后端分层
 
@@ -334,7 +325,7 @@ app/Article.php 等    模型（extends think\Model），唯一接触数据库�
 
 ---
 
-## 九、常见问题
+## 七、常见问题
 
 | 现象 | 原因 | 解决 |
 |---|---|---|
@@ -349,7 +340,7 @@ app/Article.php 等    模型（extends think\Model），唯一接触数据库�
 
 ---
 
-## 十、说明（安全）
+## 八、说明（安全）
 
 密码已从明文升级为哈希（`tp8/app/controller/Auth.php`）：
 
@@ -360,7 +351,7 @@ app/Article.php 等    模型（extends think\Model），唯一接触数据库�
 
 ---
 
-## 十一、UniApp 客户端（H5 + 微信小程序）
+## 九、UniApp 客户端（H5 + 微信小程序）
 
 前端除 Vue 后台外，另有一套 uni-app 客户端，目录 `uniapp/`，编译目标：
 
@@ -396,7 +387,7 @@ node node_modules\vite\bin\vite.js build --config vite.config.js --base=/h5/
 
 ---
 
-## 十二、线上部署（宝塔面板）
+## 十、线上部署（宝塔面板）
 
 | 项 | 值 |
 |---|---|
@@ -451,7 +442,7 @@ curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'usern
 
 ---
 
-## 十三、测试账号
+## 十一、测试账号
 
 | 角色 | 账号 | 密码 | 说明 |
 |---|---|---|---|
@@ -464,7 +455,7 @@ curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'usern
 
 ---
 
-## 十四、接口文档与 Apifox
+## 十二、接口文档与 Apifox
 
 - 文件：`docs/apifox-openapi.json`（OpenAPI 3.0，21 个接口）
 - 本地环境：`http://127.0.0.1/mymessage/tp8/public/index.php/api`
@@ -484,7 +475,7 @@ curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'usern
 
 ---
 
-## 十五、Navicat 连接线上 MySQL
+## 十三、Navicat 连接线上 MySQL
 
 | 项 | 值 |
 |---|---|
@@ -504,7 +495,7 @@ curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'usern
 
 ---
 
-## 十六、结业验收清单
+## 十四、结业验收清单
 
 - [x] 后端只用 `think\Model`，业务代码无 `Db::`（`grep -r "Db::" tp8/app` 为空）
 - [x] 控制器 / 模型 / 接口 / 前端分工清楚（见「二、目录结构」）
@@ -518,7 +509,7 @@ curl -s -X POST -H 'Host: 43.143.237.166' 'http://127.0.0.1/api/login' -d 'usern
 
 ---
 
-## 十七、Git
+## 十五、Git
 
 本地仓库：`D:\phpstudy_pro\WWW\mymessage`（remote `https://github.com/XuJing-zz/mymessage.git`）
 
@@ -528,4 +519,3 @@ git tag           # v1.0.0-final
 ```
 
 > 当前环境访问不到 github.com:443（本机与服务器均如此），推送需代理或凭据；代码已全部提交到本地 `main`。
-
